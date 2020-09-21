@@ -3326,6 +3326,9 @@ begin
       for I := FirstDbcIndex to GetColumnCount{$IFDEF GENERIC_INDEX}-1{$ENDIF} do begin
         SQLType := GetColumnType(I);
         FieldType := ConvertDbcToDatasetType(SQLType, Connection.ControlsCodePage, GetPrecision(I));
+        if (FieldType = ftSmallint) and (ResultSet.GetMetadata.GetPrecision(I) = 1) and (ResultSet.GetMetadata.GetDefaultValue(I) = '0') then
+           FieldType := ftBoolean;
+
         if (FieldType = ftVarBytes) and IsSigned(I) then
           FieldType := ftBytes;
         (*{$IFDEF WITH_FTTIMESTAMP_FIELD}
