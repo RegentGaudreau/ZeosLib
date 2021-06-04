@@ -55,7 +55,7 @@ interface
 
 {$I ZDbc.inc}
 
-{$IFDEF ENABLE_PROXY} //if set we have an empty unit
+{$IFNDEF ZEOS_DISABLE_PROXY} //if set we have an empty unit
 uses
   Types, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils,
   ZDbcIntfs, ZDbcMetadata, ZCompatibility, ZSelectSchema;
@@ -400,9 +400,9 @@ type
 //    function GetIdentifierConvertor: IZIdentifierConvertor; override;
  end;
 
-{$ENDIF ENABLE_PROXY} //if set we have an empty unit
+{$ENDIF ZEOS_DISABLE_PROXY} //if set we have an empty unit
 implementation
-{$IFDEF ENABLE_PROXY} //if set we have an empty unit
+{$IFNDEF ZEOS_DISABLE_PROXY} //if set we have an empty unit
 
 uses
   TypInfo,
@@ -2520,5 +2520,5 @@ begin
   Result := TZDbcProxyResultSet.Create(GetConnection, '', Res);
 end;
 
-{$ENDIF ENABLE_PROXY} //if set we have an empty unit
+{$ENDIF ZEOS_DISABLE_PROXY} //if set we have an empty unit
 end.

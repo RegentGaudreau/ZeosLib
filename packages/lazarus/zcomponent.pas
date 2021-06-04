@@ -9,11 +9,18 @@ interface
 
 uses
   ZAbstractConnection, ZAbstractDataset, ZAbstractRODataset, ZAbstractTable, 
-  ZConnection, ZConnectionGroup, ZDataset, ZDatasetUtils, ZEventListener, 
-  ZFormatSettings, ZGroupedConnection, ZIBEventAlerter, ZMemTable, 
-  ZPgEventAlerter, ZSqlMetadata, ZSqlMonitor, ZSqlProcessor, ZSqlStrings, 
-  ZSqlUpdate, ZStoredProcedure, ZDatasetParam, ZTransaction;
+  ZComponentReg, ZConnection, ZConnectionGroup, ZDatasetUtils, 
+  ZGroupedConnection, ZIBEventAlerter, ZPgEventAlerter, ZSqlMetadata, 
+  ZSqlMonitor, ZSqlProcessor, ZSqlStrings, ZSqlUpdate, ZStoredProcedure, 
+  ZUpdateSqlEditor, ZPropertiesEditor, LazarusPackageIntf;
 
 implementation
 
+procedure Register;
+begin
+  RegisterUnit('ZComponentReg', @ZComponentReg.Register);
+end;
+
+initialization
+  RegisterPackage('zcomponent', @Register);
 end.

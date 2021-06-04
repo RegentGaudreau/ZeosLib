@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -60,11 +60,9 @@ uses
 {$IFNDEF FPC}
   DateUtils,
 {$ENDIF}
-  {$IFDEF MORMOT2}
-  mormot.db.core, mormot.core.datetime, mormot.core.text, mormot.core.base,
-  {$ELSE MORMOT2} {$IFDEF USE_SYNCOMMONS}
+{$IFDEF USE_SYNCOMMONS}
   SynCommons, SynTable,
-  {$ENDIF USE_SYNCOMMONS} {$ENDIF MORMOT2}
+{$ENDIF USE_SYNCOMMONS}
   {$IFDEF WITH_TOBJECTLIST_REQUIRES_SYSTEM_TYPES}System.Types{$IFNDEF NO_UNIT_CONTNRS},Contnrs{$ENDIF}{$ELSE}Types{$ENDIF},
   Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils,
   {$IF defined(MSWINDOWS) and not defined(WITH_UNICODEFROMLOCALECHARS)}
@@ -130,8 +128,6 @@ type
       ColumnInfo: TZColumnInfo; const TableColumns: IZResultSet); override;
     procedure SetColumnPrecisionFromGetColumnsRS(
       {$IFDEF AUTOREFCOUNT}const{$ENDIF}ColumnInfo: TZColumnInfo; const TableColumns: IZResultSet); override;
-    procedure SetColumnScaleFromGetColumnsRS(
-      {$IFDEF AUTOREFCOUNT}const{$ENDIF}ColumnInfo: TZColumnInfo; const TableColumns: IZResultSet); override;
   end;
 
   TZDBLIBColumnInfo = class(TZColumnInfo)
@@ -145,6 +141,7 @@ type
     FCheckDBDead: Boolean;
     FHandle: PDBPROCESS;
     DBLibColumnCount: Integer;
+    FUserEncoding: TZCharEncoding;
     FDecimalSep: Char;
     FClientCP: Word;
     FByteBuffer: PByteBuffer;
@@ -155,7 +152,8 @@ type
     FDataProvider: TZAbstractDblibDataProvider;
     procedure Open; override;
   public
-    constructor Create(const Statement: IZStatement; const SQL: string);
+    constructor Create(const Statement: IZStatement; const SQL: string;
+      UserEncoding: TZCharEncoding = ceDefault);
     destructor Destroy; override;
 
     procedure BeforeClose; override;
@@ -179,7 +177,7 @@ type
     procedure GetTimestamp(ColumnIndex: Integer; Var Result: TZTimeStamp); overload;
     function GetBlob(ColumnIndex: Integer;
       LobStreamMode: TZLobStreamMode = lsmRead): IZBlob;
-    {$IFDEF WITH_COLUMNS_TO_JSON}
+    {$IFDEF USE_SYNCOMMONS}
     procedure ColumnsToJSON(JSONWriter: TJSONWriter; JSONComposeOptions: TZJSONComposeOptions); overload; virtual;
     {$ENDIF}
     function Next: Boolean; override;
@@ -334,7 +332,8 @@ end;
   @param Statement a related SQL statement object.
   @param Handle a DBLib specific query handle.
 }
-constructor TZDBLibResultSet.Create(const Statement: IZStatement; const SQL: string);
+constructor TZDBLibResultSet.Create(const Statement: IZStatement; const SQL: string;
+  UserEncoding: TZCharEncoding);
 begin
   inherited Create(Statement, SQL,
     TZDblibResultSetMetadata.Create(Statement.GetConnection.GetMetadata, SQL, Self),
@@ -345,8 +344,9 @@ begin
   FByteBuffer := FDBLibConnection.GetByteBufferAddress;
   FSQL := SQL;
   FCheckDBDead := FPlainDriver.GetProtocol = 'mssql';
+  FUserEncoding := UserEncoding;
   //FDataProvider := TZPlainDblibDataProvider.Create(Statement.GetConnection as IZDbLibConnection , FCheckDBDead);
-  FDataProvider := TZCachedDblibDataProvider.Create(FDBLibConnection);
+  FDataProvider := TZCachedDblibDataProvider.Create(Statement.GetConnection as IZDbLibConnection);
   FClientCP := ConSettings.ClientCodePage.CP;
   Open;
 end;
@@ -381,11 +381,8 @@ label AssignGeneric;
         Precision := 19;
         Currency := True;
       end else begin
+        Scale := 0;
         Precision := ColInfo.MaxLength;
-        if (TDSType in [tdsChar, tdsBigBinary, tdsBigChar, tdsBigNChar]) or
-           ((TDSType = tdsBinary) and not ColInfo.VarLength)
-        then Scale := Precision
-        else Scale := 0;
       end;
       ColumnType := ConvertTDSTypeToSqlType(TDSType, Precision, Scale);
       if ColumnType = stUnknown
@@ -397,16 +394,18 @@ label AssignGeneric;
       ReadOnly := not (ColInfo.Updatable = 1);
       Writable := ColInfo.Updatable = 1;
       AutoIncrement := ColInfo.Identity;
-      Signed := (ColumnInfo.ColumnType in [stShort, stSmall, stInteger, stLong, stFloat, stCurrency, stDouble, stBigDecimal]);
+      Signed := (ColumnInfo.ColumnType in [stShort, stSmall, stInteger, stLong, stFloat, stCurrency, stDouble, stBigDecimal]) or
+        ((TDSType = tdsBinary) and not ColInfo.VarLength);
     end;
   end;
-  procedure ValueToString(P: PAnsiChar; var Result: String);
+  function ValueToString(P: PAnsiChar): String;
   var L: NativeUInt;
   begin
     L := ZFastCode.StrLen(P);
     {$IFDEF UNICODE}
-    PRawToUnicode(P, L, FClientCP, Result);
+    Result := PRawToUnicode(P, L, FClientCP);
     {$ELSE}
+    {$IFDEF FPC}Result := '';{$ENDIF}//done by ZSetString already
     ZSetString(P, L, Result{$IFDEF WITH_RAWBYTESRING}, FClientCP{$ENDIF});
     {$ENDIF}
   end;
@@ -427,28 +426,30 @@ begin
       FillChar(tdsColInfo.Name[0], tdsColInfo.SizeOfStruct- SizeOf(DBInt), #0);
       if FPlainDriver.dbcolinfo(FHandle, CI_REGULAR, I, 0, @tdsColInfo) <> DBSUCCEED then //might be possible for computed or cursor columns
         goto AssignGeneric;
-      ValueToString(@tdsColInfo.Name[0], ColumnInfo.ColumnName );
-      if Byte(tdsColInfo.ActualName[0]) = Ord(#0)
-      then ColumnInfo.ColumnLabel := ColumnInfo.ColumnName
-      else ValueToString(@tdsColInfo.ActualName[0], ColumnInfo.ColumnLabel);
-      if Byte(tdsColInfo.TableName[0]) <> Ord(#0)
-      then ValueToString(@tdsColInfo.TableName[0], ColumnInfo.TableName);
+      ColumnInfo.ColumnName := ValueToString(@tdsColInfo.Name[0]);
+      if Byte(tdsColInfo.ActualName[0]) = Ord(#0) then
+        ColumnInfo.ColumnLabel := ColumnInfo.ColumnName
+      else
+        ColumnInfo.ColumnLabel := ValueToString(@tdsColInfo.ActualName[0]);
+      if Byte(tdsColInfo.TableName[0]) <> Ord(#0) then
+        ColumnInfo.TableName := ValueToString(@tdsColInfo.TableName[0]);
       AssignGenericColumnInfoFromZDBCOL(ColumnInfo, tdsColInfo.ColInfo);
     end else if FDBLibConnection.GetProvider = dpMsSQL then begin
       ColInfo.SizeOfStruct := SizeOf(DBCOL); //before execute dbcolinfo we need to set the record size -> 122 Byte or we fail
       if FPlainDriver.dbcolinfo(FHandle, CI_REGULAR, I, 0, @ColInfo) <> DBSUCCEED then //might be possible for computed or cursor columns
         goto AssignGeneric;
-      ValueToString(@ColInfo.Name[0], ColumnInfo.ColumnName);
-      if Byte(ColInfo.ActualName[0]) = Ord(#0)
-      then ColumnInfo.ColumnLabel := ColumnInfo.ColumnName
-      else ValueToString(@ColInfo.ActualName[0], ColumnInfo.ColumnLabel);
+      ColumnInfo.ColumnName := ValueToString(@ColInfo.Name[0]);
+      if Byte(ColInfo.ActualName[0]) = Ord(#0) then
+        ColumnInfo.ColumnLabel := ColumnInfo.ColumnName
+      else
+        ColumnInfo.ColumnLabel := ValueToString(@ColInfo.ActualName[0]);
       if (Byte(ColInfo.TableName[0]) <> Ord(#0)) then
-        ValueToString(@ColInfo.TableName[0], ColumnInfo.TableName);
+        ColumnInfo.TableName := ValueToString(@ColInfo.TableName[0]);
       AssignGenericColumnInfoFromZDBCOL(ColumnInfo, ColInfo.ColInfo);
     end else with ColumnInfo do begin
 AssignGeneric:  {this is the old way we did determine the ColumnInformations}
-      ValueToString(FPlainDriver.dbColSource(FHandle, I), ColumnName);
-      ValueToString(FPlainDriver.dbColName(FHandle, I), ColumnLabel);
+      ColumnName := ValueToString(FPlainDriver.dbColSource(FHandle, I));
+      ColumnLabel := ValueToString(FPlainDriver.dbColName(FHandle, I));
       TDSType := TTDSType(FPlainDriver.dbColtype(FHandle, I));
       Precision := FPlainDriver.dbCollen(FHandle, I);
       Scale := 0;
@@ -458,22 +459,22 @@ AssignGeneric:  {this is the old way we did determine the ColumnInformations}
       Currency := TDSType in [tdsMoney, tdsMoney4, tdsMoneyN];
       Signed := not (TDSType = tdsInt1);
     end;
-    if (ColumnInfo.ColumnType in [stString, stUnicodeString, stAsciiStream, stUnicodeStream]) then begin
-      ColumnInfo.ColumnCodePage := FClientCP;
-      if (ColumnInfo.ColumnType in [stString, stUnicodeString])
-      then ColumnInfo.Precision := ColumnInfo.Precision div ConSettings.ClientCodePage.CharWidth
-      else ColumnInfo.Precision := -1;
-    end;
+    if (ColumnInfo.ColumnType in [stString, stUnicodeString, stAsciiStream, stUnicodeStream]) then
+      if (FPlainDriver.DBLibraryVendorType <> lvtMS) then
+        ColumnInfo.ColumnCodePage := FClientCP
+      else if (ColumnInfo.ColumnType in [stAsciiStream, stUnicodeStream]) then
+        ColumnInfo.ColumnCodePage := FClientCP
+      else if (FUserEncoding = ceUTF8)
+        then ColumnInfo.ColumnCodePage := zCP_UTF8
+        else ColumnInfo.ColumnCodePage := zCP_NONE;
     ColumnsInfo.Add(ColumnInfo);
   end;
 
   if FDataProvider is TZCachedDblibDataProvider then begin
     (FDataProvider as TZCachedDblibDataProvider).LoadData;
-    FCursorLocation := rctClient;
     if NeedsLoading then
       (GetMetaData as IZDblibResultSetMetadata).LoadColumns;
-  end else
-    FCursorLocation := rctServer;
+  end;
 
   inherited Open;
 end;
@@ -517,14 +518,12 @@ begin
       Format(SColumnIsNotAccessable, [ColumnIndex]));
 end;
 
-{$IFDEF WITH_COLUMNS_TO_JSON}
-{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "XYZ" not used} {$ENDIF}
+{$IFDEF USE_SYNCOMMONS}
 procedure TZDBLibResultSet.ColumnsToJSON(JSONWriter: TJSONWriter;
   JSONComposeOptions: TZJSONComposeOptions);
 begin
   raise EZUnsupportedException.Create(SUnsupportedOperation);
 end;
-{$IFDEF FPC} {$POP} {$ENDIF}
 {$ENDIF}
 
 {**
@@ -625,7 +624,7 @@ ConvASCII:   fUniTemp := Ascii7ToUnicodeString(dbData, Len);
             end;
         tdsVarChar, tdsBigVarChar, tdsText:
 set_from_a:if (FPLainDriver.DBLibraryVendorType <> lvtMS) or (ColumnCodePage <> zCP_NONE) then begin
-ConvCCP2W:  PRawToUnicode(dbData, Len, ColumnCodePage, fUniTemp);
+ConvCCP2W:  fUniTemp := PRawToUnicode(dbData, Len, ColumnCodePage);
             goto Set_From_W;
           end else case ZDetectUTF8Encoding(dbData, Len) of
             etUTF8: begin
@@ -1172,13 +1171,6 @@ procedure TZDblibResultSetMetadata.SetColumnPrecisionFromGetColumnsRS(
 begin
   if (ColumnInfo.ColumnType = stString) or (ColumnInfo.ColumnType = stUnicodeString) then
     ColumnInfo.Precision := TableColumns.GetInt(TableColColumnSizeIndex);
-end;
-
-procedure TZDblibResultSetMetadata.SetColumnScaleFromGetColumnsRS(
-  {$IFDEF AUTOREFCOUNT}const{$ENDIF}ColumnInfo: TZColumnInfo; const TableColumns: IZResultSet);
-begin
-  if (ColumnInfo.ColumnType = stBytes) then
-    ColumnInfo.Scale := TableColumns.GetInt(TableColColumnDecimalDigitsIndex);
 end;
 
 {$ENDIF ZEOS_DISABLE_DBLIB} //if set we have an empty unit

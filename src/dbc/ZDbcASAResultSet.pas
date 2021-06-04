@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -57,11 +57,9 @@ interface
 {$IFNDEF ZEOS_DISABLE_ASA}
 
 uses
-  {$IFDEF MORMOT2}
-  mormot.db.core, mormot.core.datetime, mormot.core.text, mormot.core.base,
-  {$ELSE MORMOT2} {$IFDEF USE_SYNCOMMONS}
+{$IFDEF USE_SYNCOMMONS}
   SynCommons, SynTable,
-  {$ENDIF USE_SYNCOMMONS} {$ENDIF MORMOT2}
+{$ENDIF USE_SYNCOMMONS}
   {$IFDEF WITH_TOBJECTLIST_REQUIRES_SYSTEM_TYPES}
   System.Types{$IFNDEF NO_UNIT_CONTNRS},Contnrs{$ENDIF}
   {$ELSE}
@@ -79,7 +77,7 @@ type
   TZASAAbstractResultSet = class(TZAbstractReadOnlyResultSet_A, IZResultSet)
   private
     FSQLDA: PASASQLDA;
-    FLobCacheMode: TLobCacheMode;
+    FCachedBlob: boolean;
     FFetchStat: Integer;
     FCursorName: {$IFNDEF NO_ANSISTRING}AnsiString{$ELSE}RawByteString{$ENDIF};
     FStmtNum: SmallInt;
@@ -95,7 +93,7 @@ type
   public
     constructor Create(const Statement: IZStatement; const SQL: string;
       StmtNum: SmallInt; const CursorName: {$IFNDEF NO_ANSISTRING}AnsiString{$ELSE}RawByteString{$ENDIF};
-      const SqlData: IZASASQLDA; LobCacheMode: TLobCacheMode);
+      const SqlData: IZASASQLDA; CachedBlob: boolean);
 
     procedure BeforeClose; override;
     procedure AfterClose; override;
@@ -121,68 +119,22 @@ type
     function GetBlob(ColumnIndex: Integer; LobStreamMode: TZLobStreamMode = lsmRead): IZBlob;
 
     property SQLData: IZASASQLDA read FSQLData;
-    {$IFDEF WITH_COLUMNS_TO_JSON}
+    {$IFDEF USE_SYNCOMMONS}
     procedure ColumnsToJSON(JSONWriter: TJSONWriter; JSONComposeOptions: TZJSONComposeOptions);
-    {$ENDIF WITH_COLUMNS_TO_JSON}
+    {$ENDIF USE_SYNCOMMONS}
   end;
 
   TZASAParamererResultSet = Class(TZASAAbstractResultSet)
-  protected
-    procedure Open; override;
   public
     constructor Create(const Statement: IZStatement; const SQL: string;
       var StmtNum: SmallInt; const CursorName: {$IFNDEF NO_ANSISTRING}AnsiString{$ELSE}RawByteString{$ENDIF}; const SqlData: IZASASQLDA;
-      LobCacheMode: TLobCacheMode);
-    /// <summary>Moves the cursor down one row from its current position. A
-    ///  <c>ResultSet</c> cursor is initially positioned before the first row;
-    ///  the first call to the method <c>next</c> makes the first row the
-    ///  current row; the second call makes the second row the current row, and
-    ///  so on. If an input stream is open for the current row, a call to the
-    ///  method <c>next</c> will implicitly close it. A <c>ResultSet</c>
-    ///  object's warning chain is cleared when a new row is read.
-    /// <returns><c>true</c> if the new current row is valid; <c>false</c> if
-    ///  there are no more rows</returns>
+      CachedBlob: boolean);
     function Next: Boolean; override;
-    /// <summary>Moves the cursor to the given row number in
-    ///  this <c>ResultSet</c> object. If the row number is positive, the cursor
-    ///  moves to the given row number with respect to the beginning of the
-    ///  result set. The first row is row 1, the second is row 2, and so on.
-    ///  If the given row number is negative, the cursor moves to
-    ///  an absolute row position with respect to the end of the result set.
-    ///  For example, calling the method <c>absolute(-1)</c> positions the
-    ///  cursor on the last row; calling the method <c>absolute(-2)</c>
-    ///  moves the cursor to the next-to-last row, and so on. An attempt to
-    ///  position the cursor beyond the first/last row in the result set leaves
-    ///  the cursor before the first row or after the last row.
-    ///  <B>Note:</B> Calling <c>absolute(1)</c> is the same
-    ///  as calling <c>first()</c>. Calling <c>absolute(-1)</c>
-    ///  is the same as calling <c>last()</c>.</summary>
-    /// <param>"Row" the absolute position to be moved.</param>
-    /// <returns><c>true</c> if the cursor is on the result set;<c>false</c>
-    ///  otherwise</returns>
-    function MoveAbsolute(Row: Integer): Boolean; override;
   end;
 
   TZASANativeResultSet = Class(TZASAAbstractResultSet)
   public
     function Last: Boolean; override;
-    /// <summary>Moves the cursor to the given row number in
-    ///  this <c>ResultSet</c> object. If the row number is positive, the cursor
-    ///  moves to the given row number with respect to the beginning of the
-    ///  result set. The first row is row 1, the second is row 2, and so on.
-    ///  If the given row number is negative, the cursor moves to
-    ///  an absolute row position with respect to the end of the result set.
-    ///  For example, calling the method <c>absolute(-1)</c> positions the
-    ///  cursor on the last row; calling the method <c>absolute(-2)</c>
-    ///  moves the cursor to the next-to-last row, and so on. An attempt to
-    ///  position the cursor beyond the first/last row in the result set leaves
-    ///  the cursor before the first row or after the last row.
-    ///  <B>Note:</B> Calling <c>absolute(1)</c> is the same
-    ///  as calling <c>first()</c>. Calling <c>absolute(-1)</c>
-    ///  is the same as calling <c>last()</c>.</summary>
-    /// <param>"Row" the absolute position to be moved.</param>
-    /// <returns><c>true</c> if the cursor is on the result set;<c>false</c>
-    ///  otherwise</returns>
     function MoveAbsolute(Row: Integer): Boolean; override;
     function MoveRelative(Rows: Integer): Boolean; override;
     function Previous: Boolean; override;
@@ -199,7 +151,7 @@ type
   TZASARowAccessor = class(TZRowAccessor)
   public
     constructor Create(ColumnsInfo: TObjectList; ConSettings: PZConSettings;
-      const OpenLobStreams: TZSortedList; LobCacheMode: TLobCacheMode); override;
+      const OpenLobStreams: TZSortedList; CachedLobs: WordBool); override;
     procedure FetchLongData(AsStreamedType: TZSQLType; const ResultSet: IZResultSet;
       ColumnIndex: Integer; Data: PPZVarLenData); override;
   end;
@@ -242,17 +194,6 @@ type
   protected
     function CreateLobStream(CodePage: Word; LobStreamMode: TZLobStreamMode): TStream; override;
   public //IImmediatelyReleasable
-    /// <summary>Releases all driver handles and set the object in a closed
-    ///  Zombi mode waiting for destruction. Each known supplementary object,
-    ///  supporting this interface, gets called too. This may be a recursive
-    ///  call from parant to childs or vice vera. So finally all resources
-    ///  to the servers are released. This method is triggered by a connecton
-    ///  loss. Don't use it by hand except you know what you are doing.</summary>
-    /// <param>"Sender" the object that did notice the connection lost.</param>
-    /// <param>"AError" a reference to an EZSQLConnectionLost error.
-    ///  You may free and nil the error object so no Error is thrown by the
-    ///  generating method. So we start from the premisse you have your own
-    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable;
       var AError: EZSQLConnectionLost);
     function GetConSettings: PZConSettings;
@@ -285,7 +226,7 @@ uses
 
 { TZASAResultSet }
 
-{$IFDEF WITH_COLUMNS_TO_JSON}
+{$IFDEF USE_SYNCOMMONS}
 procedure TZASAAbstractResultSet.ColumnsToJSON(JSONWriter: TJSONWriter;
   JSONComposeOptions: TZJSONComposeOptions);
 var L: NativeUInt;
@@ -355,7 +296,7 @@ begin
                                   if ColumnCodePage = zCP_UTF8 then
                                     JSONWriter.AddJSONEscape(@PZASASQLSTRING(sqlData).data[0], PZASASQLSTRING(sqlData).length)
                                   else begin
-                                    PRawToUnicode(@PZASASQLSTRING(sqlData).data[0], PZASASQLSTRING(sqlData).length, ConSettings^.ClientCodePage^.CP, FUniTemp);
+                                    FUniTemp := PRawToUnicode(@PZASASQLSTRING(sqlData).data[0], PZASASQLSTRING(sqlData).length, ConSettings^.ClientCodePage^.CP);
                                     JSONWriter.AddJSONEscapeW(Pointer(FUniTemp), Length(FUniTemp));
                                   end;
                                   JSONWriter.Add('"');
@@ -368,26 +309,22 @@ begin
                                   if jcoMongoISODate in JSONComposeOptions then
                                     JSONWriter.AddShort('ISODate("')
                                   else if jcoDATETIME_MAGIC in JSONComposeOptions then
-                                    {$IFDEF MORMOT2}
-                                    JSONWriter.AddShorter(JSON_SQLDATE_MAGIC_QUOTE_STR)
-                                    {$ELSE}
                                     JSONWriter.AddNoJSONEscape(@JSON_SQLDATE_MAGIC_QUOTE_VAR,4)
-                                    {$ENDIF}
                                   else
                                     JSONWriter.Add('"');
                                   if PZASASQLDateTime(sqlData).Year < 0 then
                                     JSONWriter.Add('-');
                                   if (TZColumnInfo(ColumnsInfo[C]).ColumnType <> stTime) then begin
-                                    DateToIso8601PChar(Pointer(fByteBuffer), True, Abs(PZASASQLDateTime(sqlData).Year),
+                                    DateToIso8601PChar(PUTF8Char(fByteBuffer), True, Abs(PZASASQLDateTime(sqlData).Year),
                                     PZASASQLDateTime(sqlData).Month + 1, PZASASQLDateTime(sqlData).Day);
-                                    JSONWriter.AddNoJSONEscape(Pointer(fByteBuffer),10);
+                                    JSONWriter.AddNoJSONEscape(PUTF8Char(fByteBuffer),10);
                                   end else if jcoMongoISODate in JSONComposeOptions then
                                     JSONWriter.AddShort('0000-00-00');
                                   if (TZColumnInfo(ColumnsInfo[C]).ColumnType <> stDate) then begin
-                                    TimeToIso8601PChar(Pointer(fByteBuffer), True, PZASASQLDateTime(sqlData).Hour,
+                                    TimeToIso8601PChar(PUTF8Char(fByteBuffer), True, PZASASQLDateTime(sqlData).Hour,
                                     PZASASQLDateTime(sqlData).Minute, PZASASQLDateTime(sqlData).Second,
                                     PZASASQLDateTime(sqlData).MicroSecond div 1000, 'T', jcoMilliseconds in JSONComposeOptions);
-                                    JSONWriter.AddNoJSONEscape(Pointer(fByteBuffer),9 + (4*Ord(jcoMilliseconds in JSONComposeOptions)));
+                                    JSONWriter.AddNoJSONEscape(PUTF8Char(fByteBuffer),9 + (4*Ord(jcoMilliseconds in JSONComposeOptions)));
                                   end;
                                   if jcoMongoISODate in JSONComposeOptions
                                   then JSONWriter.AddShort('Z)"')
@@ -415,7 +352,7 @@ begin
       JSONWriter.Add('}');
   end;
 end;
-{$ENDIF WITH_COLUMNS_TO_JSON}
+{$ENDIF USE_SYNCOMMONS}
 
 {**
   Constructs this object, assignes main properties and
@@ -428,7 +365,7 @@ end;
 }
 constructor TZASAAbstractResultSet.Create(const Statement: IZStatement;
   const SQL: string; StmtNum: SmallInt; const CursorName: {$IFNDEF NO_ANSISTRING}AnsiString{$ELSE}RawByteString{$ENDIF};
-  const SqlData: IZASASQLDA; LobCacheMode: TLobCacheMode);
+  const SqlData: IZASASQLDA; CachedBlob: boolean);
 begin
   inherited Create(Statement, SQL, nil,Statement.GetConnection.GetConSettings);
 
@@ -436,12 +373,12 @@ begin
   FSqlData := SqlData;
   Self.FSQLDA := FSqlData.GetData;
   FCursorName := CursorName;
-  FLobCacheMode := LobCacheMode;
+  FCachedBlob := CachedBlob;
   FASAConnection := Statement.GetConnection as IZASAConnection;
   FByteBuffer := FASAConnection.GetByteBufferAddress;
   FPlainDriver := TZASAPlainDriver(FASAConnection.GetIZPlainDriver.GetInstance);
   FStmtNum := StmtNum;
-  ResultSetType := rtScrollInsensitive;
+  ResultSetType := rtScrollSensitive;
   ResultSetConcurrency := rcReadOnly;
   Open;
 end;
@@ -1250,8 +1187,8 @@ set_Results:            Len := Result - PWideChar(fByteBuffer);
                       end;
       DT_NVARCHAR,
       DT_VARCHAR    : begin
-                        PRawToUnicode(@PZASASQLSTRING(sqlData).data[0],
-                          PZASASQLSTRING(sqlData).length, ColumnCodePage, fUniTemp);
+                        fUniTemp := PRawToUnicode(@PZASASQLSTRING(sqlData).data[0],
+                          PZASASQLSTRING(sqlData).length, ColumnCodePage);
                         goto set_from_uni;
                       end;
       DT_BINARY     : begin
@@ -1362,16 +1299,14 @@ begin
         if ColumnType = stUnicodeString then begin//ASA calcutates the n column different
           CharOctedLength := GetFieldLength(I);
           Precision := CharOctedLength shr 2; //default UTF8 has 3 bytes only whereas n-cols have 4 bytes
-          if FSQLDA.sqlvar[I].sqlType and $FFFE = DT_NFIXCHAR then
-            Scale := Precision;
+          Signed := FSQLDA.sqlvar[I].sqlType and $FFFE = DT_NFIXCHAR;
         end;
       end else if FieldSqlType in [stString, stAsciiStream] then begin
         ColumnCodePage := ConSettings^.ClientCodePage^.CP;
         if ColumnType = stString then begin
           CharOctedLength := GetFieldLength(I);
           Precision := CharOctedLength div ConSettings^.ClientCodePage^.CharWidth;
-          if FSQLDA.sqlvar[I].sqlType and $FFFE = DT_FIXCHAR then
-            Scale := Precision;
+          Signed := FSQLDA.sqlvar[I].sqlType and $FFFE = DT_FIXCHAR;
         end;
       end else if FieldSqlType = stBytes then begin
         Precision := GetFieldLength(I);
@@ -1399,7 +1334,6 @@ begin
     ColumnsInfo.Add(ColumnInfo);
   end;
   FSqlData.InitFields; //EH: init fields AFTER retrieving col infos!
-  FCursorLocation := rctServer;
   inherited Open;
 end;
 
@@ -1443,33 +1377,31 @@ end;
 
 constructor TZASAParamererResultSet.Create(const Statement: IZStatement;
   const SQL: string; var StmtNum: SmallInt; const CursorName: {$IFNDEF NO_ANSISTRING}AnsiString{$ELSE}RawByteString{$ENDIF};
-  const SqlData: IZASASQLDA; LobCacheMode: TLobCacheMode);
+  const SqlData: IZASASQLDA; CachedBlob: boolean);
 begin
-  inherited Create(Statement, SQL, StmtNum, CursorName, SqlData, LobCacheMode);
+  inherited Create(Statement, SQL, StmtNum, CursorName, SqlData, CachedBlob);
   SetType(rtForwardOnly);
-  LastRowNo := 1;
 end;
 
-function TZASAParamererResultSet.MoveAbsolute(Row: Integer): Boolean;
-begin
-  Result := not Closed and ((Row = 1) or (Row = 0));
-  if (Row >= 0) and (Row <= 2) then
-    RowNo := Row;
-end;
+{**
+  Moves the cursor down one row from its current position.
+  A <code>ResultSet</code> cursor is initially positioned
+  before the first row; the first call to the method
+  <code>next</code> makes the first row the current row; the
+  second call makes the second row the current row, and so on.
 
+  <P>If an input stream is open for the current row, a call
+  to the method <code>next</code> will
+  implicitly close it. A <code>ResultSet</code> object's
+  warning chain is cleared when a new row is read.
+
+  @return <code>true</code> if the new current row is valid;
+    <code>false</code> if there are no more rows
+}
 function TZASAParamererResultSet.Next: Boolean;
 begin
-  Result := not Closed and (RowNo = 0);
-  if RowNo = 0 then
-    RowNo := 1
-  else if RowNo = 1 then
-    RowNo := 2; //set AfterLast
-end;
-
-procedure TZASAParamererResultSet.Open;
-begin
-  inherited Open;
-  FCursorLocation := rctClient;
+  Result := (not Closed) and (RowNo = 0);
+  if Result then RowNo := 1;
 end;
 
 { TZASANativeResultSet }
@@ -1634,10 +1566,10 @@ end;
 
 { TZASARowAccessor }
 
-{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "LobCacheMode" not used} {$ENDIF}
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "CachedLobs" not used} {$ENDIF}
 constructor TZASARowAccessor.Create(ColumnsInfo: TObjectList;
   ConSettings: PZConSettings; const OpenLobStreams: TZSortedList;
-  LobCacheMode: TLobCacheMode);
+  CachedLobs: WordBool);
 var TempColumns: TObjectList;
   I: Integer;
   Current: TZColumnInfo;
@@ -1653,7 +1585,7 @@ begin
    if Current.ColumnType in [stAsciiStream, stBinaryStream] then
       Current.ColumnType := TZSQLType(Byte(Current.ColumnType)-3);
   end;
-  inherited Create(TempColumns, ConSettings, OpenLobStreams, lcmNone);
+  inherited Create(TempColumns, ConSettings, OpenLobStreams, False);
   TempColumns.Free;
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}

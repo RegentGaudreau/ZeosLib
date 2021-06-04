@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -55,19 +55,16 @@ interface
 
 {$I ZParseSql.inc}
 
-{$IF defined(DISABLE_INTERBASE_AND_FIREBIRD) and defined(ZEOS_DISABLE_ADO) and
-  defined(ZEOS_DISABLE_OLEDB) and defined(ZEOS_DISABLE_ODBC) and defined(ZEOS_DISABLE_PROXY)}
-  {$DEFINE EMPTY_ZInterbaseAnalyser}
-{$IFEND}
-
-{$IFNDEF EMPTY_ZInterbaseAnalyser}
+{$IFNDEF DISABLE_INTERBASE_AND_FIREBIRD}
 uses Classes, ZGenericSqlAnalyser;
 
 type
-  /// <summary>Implements an Interbase statements analyser.</summary>
-  TZInterbaseStatementAnalyser = class (TZGenericStatementAnalyser);
 
-{$ENDIF EMPTY_ZInterbaseAnalyser}
+  {** Implements an Interbase statements analyser. }
+  TZInterbaseStatementAnalyser = class (TZGenericStatementAnalyser)
+  end;
+
+{$ENDIF DISABLE_INTERBASE_AND_FIREBIRD}
 
 implementation
 

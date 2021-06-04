@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -55,7 +55,7 @@ unit ZDbcSQLAnywhereUtils;
 
 interface
 
-{$IFNDEF ZEOS_DISABLE_SQLANY}
+{$IFNDEF ZEOS_DISABLE_ASA}
 uses ZPlainSQLAnywhere, ZDbcIntfs;
 
 {**
@@ -65,9 +65,9 @@ uses ZPlainSQLAnywhere, ZDbcIntfs;
 }
 
 function ConvertSQLAnyTypeToSQLType(native_type: Ta_sqlany_native_type): TZSQLType;
-{$ENDIF ZEOS_DISABLE_SQLANY}
+{$ENDIF ZEOS_DISABLE_ASA}
 implementation
-{$IFNDEF ZEOS_DISABLE_SQLANY}
+{$IFNDEF ZEOS_DISABLE_ASA}
 
 {**
   Converts a Sybase SQLAnywhere native types into ZDBC SQL types.
@@ -103,5 +103,5 @@ begin
   end;
 end;
 initialization
-{$ENDIF ZEOS_DISABLE_SQLANY}
+{$ENDIF ZEOS_DISABLE_ASA}
 end.

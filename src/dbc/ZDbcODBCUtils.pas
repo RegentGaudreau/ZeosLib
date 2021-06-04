@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -58,16 +58,14 @@ interface
 {$IFNDEF ZEOS_DISABLE_ODBC} //if set we have an empty unit
 uses SysUtils,
   {$IF defined (WITH_INLINE) and defined(MSWINDOWS) and not defined(WITH_UNICODEFROMLOCALECHARS)}Windows, {$IFEND}
-  ZCompatibility, ZDbcIntfs, ZPlainODBCDriver, ZFastCode, ZDbcStatement;
+  ZCompatibility, ZDbcIntfs, ZPlainODBCDriver, ZFastCode;
 
 type
   PStrLen_or_IndArray = ^TStrLen_or_IndArray;
   TStrLen_or_IndArray = array[0..600] of SQLLEN;
 
-  PZODBCBindValue = ^TZODBCBindValue;
-  TZODBCBindValue = record
-    /// <summary> the generic bindvalue record<summary>
-    BindValue: TZBindValue;
+  PZODBCParamBind = ^TZODBCParamBind;
+  TZODBCParamBind = record
     InputOutputType: SQLSMALLINT; //the InputOutputType of the Parameter
     ValueType: SQLSMALLINT; //the C-DataType
     ParameterType: SQLSMALLINT; //the SQL-DataType
@@ -78,9 +76,12 @@ type
     Nullable: SQLSMALLINT;
     BufferLength: SQLLEN;
     ValueCount: Integer;
+    SQLType: TZSQLType;
     Described, ExternalMem: Boolean;
     ParamName: String;
   end;
+  PZODBCParamBindArray = ^TZODBCParamBindArray;
+  TZODBCParamBindArray = array[Byte] of TZODBCParamBind;
 
 function ConvertODBCTypeToSQLType(ODBCType, Scale: SQLSMALLINT; Precision: Integer; UnSigned: Boolean;
   ConSettings: PZConSettings; ODBC_CType: PSQLSMALLINT): TZSQLType;

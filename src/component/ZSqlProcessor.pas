@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -56,7 +56,6 @@ interface
 {$I ZComponent.inc}
 
 uses Types, Classes, SysUtils, {$IFDEF MSEgui}mclasses, mdb{$ELSE}DB{$ENDIF},
-  {$IFNDEF DISABLE_ZPARAM}ZDatasetParam,{$ENDIF}
   ZDbcIntfs, ZAbstractConnection, ZScriptParser, ZSqlStrings, ZCompatibility;
 
 type
@@ -82,21 +81,23 @@ type
 
   { TZSQLProcessor }
 
-  TZSQLProcessor = class(TZAbstractConnectionLinkedComponent)
+  TZSQLProcessor = class (TComponent)
   private
-    FParams: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF};
+    FParams: TParams;
     FScript: TZSQLStrings;
 
     FScriptParser: TZSQLScriptParser;
+    FConnection: TZAbstractConnection;
     FBeforeExecute: TZProcessorNotifyEvent;
     FAfterExecute: TZProcessorNotifyEvent;
     FOnError: TZProcessorErrorEvent;
 
-    procedure SetParams(Value: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF});
+    procedure SetParams(Value: TParams);
     function GetScript: TStrings;
     procedure SetScript(Value: TStrings);
     function GetStatementCount: Integer;
     function GetStatement(Index: Integer): string;
+    procedure SetConnection(Value: TZAbstractConnection);
     function GetDelimiterType: TZDelimiterType;
     procedure SetDelimiterType(Value: TZDelimiterType);
     function GetDelimiter: string;
@@ -110,7 +111,6 @@ type
     procedure SetParamChar(Value: Char);
     procedure UpdateSQLStrings({%H-}Sender: TObject);
   protected
-    procedure SetConnection(Value: TZAbstractConnection); override;
     procedure CheckConnected;
     function DoOnError(StatementIndex: Integer; E: Exception):
       TZErrorHandleAction;
@@ -120,19 +120,19 @@ type
     function CreateStatement(const SQL: string; Properties: TStrings):
       IZPreparedStatement; virtual;
     procedure SetStatementParams(const Statement: IZPreparedStatement;
-      const ParamNames: TStringDynArray; Params: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF}); virtual;
+      const ParamNames: TStringDynArray; Params: TParams); virtual;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
 
-    procedure LoadFromStream(Stream: TStream{$IFDEF WITH_TSTRINGS_TENCODING_LOADFROM}; Encoding: TEncoding = nil{$ENDIF});
-    procedure LoadFromFile(const FileName: string{$IFDEF WITH_TSTRINGS_TENCODING_LOADFROM}; Encoding: TEncoding = nil{$ENDIF});
+    procedure LoadFromStream(Stream: TStream);
+    procedure LoadFromFile(const FileName: string);
 
     procedure Execute;
     procedure Parse;
     procedure Clear;
 
-    function ParamByName(const Value: string): {$IFNDEF DISABLE_ZPARAM}TZParam{$ELSE}TParam{$ENDIF};
+    function ParamByName(const Value: string): TParam;
 
     property StatementCount: Integer read GetStatementCount;
     property Statements[Index: Integer]: string read GetStatement;
@@ -141,9 +141,9 @@ type
       default True;
     property ParamChar: Char read GetParamChar write SetParamChar
       default ':';
-    property Params: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF} read FParams write SetParams;
+    property Params: TParams read FParams write SetParams;
     property Script: TStrings read GetScript write SetScript;
-    property Connection;
+    property Connection: TZAbstractConnection read FConnection write SetConnection;
     property DelimiterType: TZDelimiterType read GetDelimiterType
       write SetDelimiterType default dtDefault;
     property Delimiter: string read GetDelimiter write SetDelimiter;
@@ -168,7 +168,7 @@ constructor TZSQLProcessor.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
 
-  FParams := {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF}.Create(Self);
+  FParams := TParams.Create(Self);
   FScript := TZSQLStrings.Create;
   FScript.Dataset := Self;
   FScript.OnChange := UpdateSQLStrings;
@@ -219,7 +219,8 @@ end;
 }
 procedure TZSQLProcessor.SetConnection(Value: TZAbstractConnection);
 begin
-  if FConnection <> Value then begin
+  if FConnection <> Value then
+  begin
     FConnection := Value;
     FScriptParser.ClearUncompleted;
   end;
@@ -271,7 +272,7 @@ end;
   Sets a new set of parameters.
   @param Value a set of parameters.
 }
-procedure TZSQLProcessor.SetParams(Value: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF});
+procedure TZSQLProcessor.SetParams(Value: TParams);
 begin
   FParams.AssignValues(Value);
 end;
@@ -343,20 +344,18 @@ end;
   Loads a SQL Processor from the local file.
   @param FileName a name of the file.
 }
-procedure TZSQLProcessor.LoadFromFile(const FileName: string
-  {$IFDEF WITH_TSTRINGS_TENCODING_LOADFROM}; Encoding: TEncoding = nil{$ENDIF});
+procedure TZSQLProcessor.LoadFromFile(const FileName: string);
 begin
-  FScript.LoadFromFile(FileName{$IFDEF WITH_TSTRINGS_TENCODING_LOADFROM}, Encoding{$ENDIF});
+  FScript.LoadFromFile(FileName);
 end;
 
 {**
   Loads a SQL Processor from the stream.
   @param Stream a stream object.
 }
-procedure TZSQLProcessor.LoadFromStream(Stream: TStream
-  {$IFDEF WITH_TSTRINGS_TENCODING_LOADFROM}; Encoding: TEncoding = nil{$ENDIF});
+procedure TZSQLProcessor.LoadFromStream(Stream: TStream);
 begin
-  FScript.LoadFromStream(Stream{$IFDEF WITH_TSTRINGS_TENCODING_LOADFROM}, Encoding{$ENDIF});
+  FScript.LoadFromStream(Stream);
 end;
 
 {**
@@ -373,31 +372,30 @@ begin
     raise EZDatabaseError.Create(SConnectionIsNotAssigned);
 
   FConnection.ShowSQLHourGlass;
-  SQL := TZSQLStrings.Create;
   try
+    SQL := TZSQLStrings.Create;
     SQL.Dataset := Self;
     SQL.ParamCheck := FScript.ParamCheck;
     SQL.MultiStatements := False;
     Parse;
 
-    for I := 0 to Pred(StatementCount) do begin
+    for I := 0 to Pred(StatementCount) do
+    begin
       Action := eaSkip;
       DoBeforeExecute(I);
       repeat
         try
           SQL.Text := GetStatement(I);
-          {https://zeoslib.sourceforge.io/viewtopic.php?f=50&t=127636}
-          if SQL.StatementCount > 0 then begin
-            Statement := CreateStatement(SQL.Statements[0].SQL, nil);
-            try
+{http://zeos.firmos.at/viewtopic.php?t=2885&start=0&postdays=0&postorder=asc&highlight=}
+          if SQL.StatementCount > 0 then
+            begin
+              Statement := CreateStatement(SQL.Statements[0].SQL, nil);
               SetStatementParams(Statement, SQL.Statements[0].ParamNamesArray,
                 FParams);
               Statement.ExecuteUpdatePrepared;
-            finally
-              Statement.Close; //see test Test1049821: if LastResultSet is assigned
-              Statement := nil;
             end;
-          end;
+          Statement.Close; //see test Test1049821: if LastResultSet is assigned
+          Statement := nil;
         except
           on E: Exception do
           begin
@@ -424,7 +422,7 @@ end;
   @param Value a parameter name.
   @return a found parameter object.
 }
-function TZSQLProcessor.ParamByName(const Value: string): {$IFNDEF DISABLE_ZPARAM}TZParam{$ELSE}TParam{$ENDIF};
+function TZSQLProcessor.ParamByName(const Value: string): TParam;
 begin
   Result := FParams.ParamByName(Value);
 end;
@@ -435,7 +433,7 @@ end;
 procedure TZSQLProcessor.Parse;
 begin
   CheckConnected;
-  FScriptParser.Tokenizer := Connection.DbcConnection.GetTokenizer;
+  FScriptParser.Tokenizer := Connection.DbcDriver.GetTokenizer;
 // mdaems 20060429 : Clear would reset the delimiter of the scriptparser
 //  FScriptParser.Clear;
   FScriptParser.ClearUncompleted;
@@ -461,16 +459,22 @@ end;
   @param Params a collection of SQL parameters.
 }
 procedure TZSQLProcessor.SetStatementParams(const Statement: IZPreparedStatement;
-  const ParamNames: TStringDynArray; Params: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF});
+  const ParamNames: TStringDynArray; Params: TParams);
 var
   I: Integer;
-  Param: {$IFNDEF DISABLE_ZPARAM}TZParam{$ELSE}TParam{$ENDIF};
+  TempParam, Param: TParam;
 begin
-  for I := Low(ParamNames) to High(ParamNames) do begin
-    Param := Params.FindParam(ParamNames[I]);
-    if not Assigned(Param) or (Param.ParamType in [ptOutput, ptResult]) then
-      Continue;
-    SetStatementParam(I+FirstDbcIndex, Statement, Param);
+  TempParam := TParam.Create(nil);
+  try
+    for I := Low(ParamNames) to High(ParamNames) do
+    begin
+      Param := Params.FindParam(ParamNames[I]);
+      if not Assigned(Param) or (Param.ParamType in [ptOutput, ptResult]) then
+        Continue;
+      SetStatementParam(I+FirstDbcIndex, Statement, Param);
+    end;
+  finally
+    TempParam.Free;
   end;
 end;
 
@@ -490,9 +494,9 @@ end;
 procedure TZSQLProcessor.UpdateSQLStrings(Sender: TObject);
 var
   I: Integer;
-  OldParams: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF};
+  OldParams: TParams;
 begin
-  OldParams := {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF}.Create;
+  OldParams := TParams.Create;
   OldParams.Assign(FParams);
   FParams.Clear;
 

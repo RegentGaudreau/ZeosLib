@@ -55,10 +55,10 @@ interface
 
 {$I ZPlain.inc}
 
-{$IFDEF ENABLE_PROXY}
+{$IFNDEF ZEOS_DISABLE_PROXY}
 
 uses SysUtils, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF}
-  ZCompatibility, ZPlainDriver,
+  {$IFDEF OLDFPC}ZClasses,{$ENDIF} ZCompatibility, ZPlainDriver,
   {$IFDEF ZEOS_PROXY_USE_INTERNAL_PROXY}ZPlainProxyDriverInternalProxy, {$ENDIF}
   ZPlainProxyDriverIntf;
 
@@ -105,11 +105,11 @@ type
     function GetLastErrorStr(): WideString;
   end;
 
-{$ENDIF ENABLE_PROXY}
+{$ENDIF ZEOS_DISABLE_PROXY}
 
 implementation
 
-{$IFDEF ENABLE_PROXY}
+{$IFNDEF ZEOS_DISABLE_PROXY}
 
 uses ZPlainLoader, ZEncoding{$IFDEF WITH_UNITANSISTRINGS}, AnsiStrings{$ENDIF};
 
@@ -185,7 +185,7 @@ begin
   {$ENDIF ZEOS_PROXY_USE_INTERNAL_PROXY}
 end;
 
-{$ENDIF ENABLE_PROXY}
+{$ENDIF ZEOS_DISABLE_PROXY}
 
 end.
 

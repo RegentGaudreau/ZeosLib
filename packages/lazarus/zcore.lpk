@@ -15,21 +15,10 @@
           <UseAnsiStrings Value="False"/>
         </SyntaxOptions>
       </Parsing>
-      <Other>
-        <Verbosity>
-          <ShowHintsForSenderNotUsed Value="True"/>
-        </Verbosity>
-        <ExecuteBefore>
-          <ShowAllMessages Value="True"/>
-        </ExecuteBefore>
-        <ExecuteAfter>
-          <ShowAllMessages Value="True"/>
-        </ExecuteAfter>
-      </Other>
     </CompilerOptions>
     <Description Value="Zeos Core Classes and Interfaces"/>
-    <Version Major="8"/>
-    <Files Count="17">
+    <Version Major="7" Minor="3"/>
+    <Files Count="15">
       <Item1>
         <Filename Value="../../src/core/ZClasses.pas"/>
         <UnitName Value="ZClasses"/>
@@ -90,14 +79,6 @@
         <Filename Value="../../src/core/ZVariant.pas"/>
         <UnitName Value="ZVariant"/>
       </Item15>
-      <Item16>
-        <Filename Value="../../src/core/ZBase64.pas"/>
-        <UnitName Value="ZBase64"/>
-      </Item16>
-      <Item17>
-        <Filename Value="../../src/core/ZXmlCompat.pas"/>
-        <UnitName Value="ZXmlCompat"/>
-      </Item17>
     </Files>
     <RequiredPkgs Count="1">
       <Item1>
@@ -110,6 +91,7 @@
     </UsageOptions>
     <PublishOptions>
       <Version Value="2"/>
+      <IgnoreBinaries Value="False"/>
     </PublishOptions>
     <CustomOptions Items="ExternHelp" Version="2">
       <_ExternHelp Items="Count"/>

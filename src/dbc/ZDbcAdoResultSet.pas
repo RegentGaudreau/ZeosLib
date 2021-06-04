@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -61,23 +61,19 @@ interface
 
 {$IFNDEF ZEOS_DISABLE_ADO}
 uses
-  {$IFDEF MORMOT2}
-  mormot.db.core, mormot.core.datetime, mormot.core.text, mormot.core.base,
-  {$ELSE MORMOT2} {$IFDEF USE_SYNCOMMONS}
+{$IFDEF USE_SYNCOMMONS}
   SynCommons, SynTable,
-  {$ENDIF USE_SYNCOMMONS} {$ENDIF MORMOT2}
+{$ENDIF USE_SYNCOMMONS}
   {$IFDEF WITH_TOBJECTLIST_REQUIRES_SYSTEM_TYPES}System.Types, System.Contnrs{$ELSE}
     {$IFNDEF NO_UNIT_CONTNRS} Contnrs,{$ENDIF} Types{$ENDIF},
   Windows, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils, FmtBCD,
-  ZSysUtils, ZDbcIntfs, ZDbcGenericResolver,
+  ZSysUtils, ZDbcIntfs, ZDbcGenericResolver, ZClasses,
   ZDbcCachedResultSet, ZDbcCache, ZDbcResultSet, ZDbcResultsetMetadata, ZCompatibility, ZPlainAdo;
 
 type
   {** Implements SQLite ResultSet Metadata. }
   TZADOResultSetMetadata = class(TZAbstractResultSetMetadata)
   protected
-    /// <summary>Clears specified column information.</summary>
-    /// <param>"ColumnInfo" a column information object.</param>
     procedure ClearColumn(ColumnInfo: TZColumnInfo); override;
   end;
 
@@ -109,23 +105,6 @@ type
     procedure AfterClose; override;
     procedure ResetCursor; override;
     function Next: Boolean; override;
-    /// <summary>Moves the cursor to the given row number in
-    ///  this <c>ResultSet</c> object. If the row number is positive, the cursor
-    ///  moves to the given row number with respect to the beginning of the
-    ///  result set. The first row is row 1, the second is row 2, and so on.
-    ///  If the given row number is negative, the cursor moves to
-    ///  an absolute row position with respect to the end of the result set.
-    ///  For example, calling the method <c>absolute(-1)</c> positions the
-    ///  cursor on the last row; calling the method <c>absolute(-2)</c>
-    ///  moves the cursor to the next-to-last row, and so on. An attempt to
-    ///  position the cursor beyond the first/last row in the result set leaves
-    ///  the cursor before the first row or after the last row.
-    ///  <B>Note:</B> Calling <c>absolute(1)</c> is the same
-    ///  as calling <c>first()</c>. Calling <c>absolute(-1)</c>
-    ///  is the same as calling <c>last()</c>.</summary>
-    /// <param>"Row" the absolute position to be moved.</param>
-    /// <returns><c>true</c> if the cursor is on the result set;<c>false</c>
-    ///  otherwise</returns>
     function MoveAbsolute(Row: Integer): Boolean; override;
     function GetRow: NativeInt; override;
     function IsNull(ColumnIndex: Integer): Boolean;
@@ -150,12 +129,9 @@ type
     procedure GetTime(ColumnIndex: Integer; var Result: TZTime); overload;
     procedure GetTimestamp(ColumnIndex: Integer; Var Result: TZTimeStamp); overload;
     function GetBlob(ColumnIndex: Integer; LobStreamMode: TZLobStreamMode = lsmRead): IZBlob;
-    {$IFDEF WITH_COLUMNS_TO_JSON}
-    /// <summary>Fill the JSONWriter with column data</summary>
-    /// <param>"JSONComposeOptions" the TZJSONComposeOptions used for composing
-    ///  the JSON contents</param>
+    {$IFDEF USE_SYNCOMMONS}
     procedure ColumnsToJSON(JSONWriter: TJSONWriter; JSONComposeOptions: TZJSONComposeOptions = [jcoEndJSONObject]);
-    {$ENDIF WITH_COLUMNS_TO_JSON}
+    {$ENDIF USE_SYNCOMMONS}
   end;
 
   {** Implements a cached resolver with Ado specific functionality. }
@@ -179,9 +155,9 @@ type
   { TZADORowAccessor }
 
   TZADORowAccessor = class(TZRowAccessor)
-  protected
-    class function MetadataToAccessorType(ColumnInfo: TZColumnInfo;
-      ConSettings: PZConSettings; Var ColumnCodePage: Word): TZSQLType; override;
+  public
+    constructor Create(ColumnsInfo: TObjectList; ConSettings: PZConSettings;
+      const OpenLobStreams: TZSortedList; CachedLobs: WordBool); override;
   end;
 
 {$ENDIF ZEOS_DISABLE_ADO}
@@ -193,7 +169,7 @@ uses
   {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings, {$ENDIF} //need for inlined FloatToRaw
   ZMessages, ZDbcAdoUtils, ZEncoding, ZFastCode, ZDbcUtils, ZDbcLogging, ZDbcAdo;
 
-{$IFDEF WITH_COLUMNS_TO_JSON}
+{$IFDEF USE_SYNCOMMONS}
 procedure TZAdoResultSet.ColumnsToJSON(JSONWriter: TJSONWriter;
   JSONComposeOptions: TZJSONComposeOptions);
 var Len, C, H, I: Integer;
@@ -234,13 +210,13 @@ begin
         VT_HRESULT:     JSONWriter.Add(PHResult(FValueAddr)^);
         VT_UI8:         JSONWriter.AddQ(PUInt64(FValueAddr)^);
         VT_I8:          JSONWriter.Add(PInt64(FValueAddr)^);
-        VT_CY:          JSONWriter.AddCurr64({$IFDEF MORMOT2}PInt64(FValueAddr){$ELSE}PCurrency(FValueAddr)^{$ENDIF});
+        VT_CY:          JSONWriter.AddCurr64(PCurrency(FValueAddr)^);
         VT_DECIMAL:     begin
                           P := @FColValue;
                           if PDecimal(P).scale > 0 then begin
                             ScaledOrdinal2Bcd(UInt64(PDecimal(P).Lo64), PDecimal(P).scale, BCD, PDecimal(P).sign > 0);
                             Len := ZSysUtils.BcdToRaw(BCd, PAnsiChar(FByteBuffer), '.');
-                            JSONWriter.AddNoJSONEscape(Pointer(FByteBuffer), Len);
+                            JSONWriter.AddNoJSONEscape(PUTF8Char(FByteBuffer), Len);
                           end else if PDecimal(P).sign > 0 then
                             JSONWriter.Add(Int64(-UInt64(PDecimal(P).Lo64)))
                           else
@@ -260,11 +236,7 @@ begin
                                 JSONWriter.AddShort('Z")');
                               end else begin
                                 if jcoDATETIME_MAGIC in JSONComposeOptions
-                                {$IFDEF MORMOT2}
-                                then JSONWriter.AddShorter(JSON_SQLDATE_MAGIC_QUOTE_STR)
-                                {$ELSE}
                                 then JSONWriter.AddNoJSONEscape(@JSON_SQLDATE_MAGIC_QUOTE_VAR,4)
-                                {$ENDIF}
                                 else JSONWriter.Add('"');
                                 JSONWriter.AddDateTime(PDateTime(FValueAddr)^, jcoMilliseconds in JSONComposeOptions);
                                 JSONWriter.Add('"');
@@ -277,11 +249,7 @@ begin
                                 JSONWriter.AddShort('Z")');
                               end else begin
                                 if jcoDATETIME_MAGIC in JSONComposeOptions
-                                {$IFDEF MORMOT2}
-                                then JSONWriter.AddShorter(JSON_SQLDATE_MAGIC_QUOTE_STR)
-                                {$ELSE}
                                 then JSONWriter.AddNoJSONEscape(@JSON_SQLDATE_MAGIC_QUOTE_VAR,4)
-                                {$ENDIF}
                                 else JSONWriter.Add('"');
                                 JSONWriter.AddDateTime(PDateTime(FValueAddr)^, jcoMilliseconds in JSONComposeOptions);
                                 JSONWriter.Add('"');
@@ -322,7 +290,7 @@ begin
       JSONWriter.Add('}');
   end;
 end;
-{$ENDIF WITH_COLUMNS_TO_JSON}
+{$ENDIF USE_SYNCOMMONS}
 
 {**
   Creates this object and assignes the main properties.
@@ -432,10 +400,8 @@ begin
       ColumnInfo.Scale := F.NumericScale;
     end else begin
       ColumnInfo.Precision := FieldSize;
-      if ColType in [adChar, adWChar, adBinary] then
-        ColumnInfo.Scale := ColumnInfo.Precision;
     end;
-    ColumnInfo.Signed := ColType in [adTinyInt, adSmallInt, adInteger, adBigInt, adDouble, adSingle, adCurrency, adDecimal, adNumeric];
+    ColumnInfo.Signed := ColType in [adTinyInt, adSmallInt, adInteger, adBigInt, adDouble, adSingle, adCurrency, adDecimal, adNumeric, adBinary];
     ColumnInfo.Writable := (prgInfo.dwFlags and (DBCOLUMNFLAGS_WRITE or DBCOLUMNFLAGS_WRITEUNKNOWN) <> 0) and (F.Properties.Item['BASECOLUMNNAME'].Value <> null) and not ColumnInfo.AutoIncrement;
     ColumnInfo.ReadOnly := (prgInfo.dwFlags and (DBCOLUMNFLAGS_WRITE or DBCOLUMNFLAGS_WRITEUNKNOWN) = 0) or ColumnInfo.AutoIncrement;
     ColumnInfo.Searchable := (prgInfo.dwFlags and DBCOLUMNFLAGS_ISLONG) = 0;
@@ -453,8 +419,7 @@ begin
   if Assigned(ppStringsBuffer) then ZAdoMalloc.Free(ppStringsBuffer);
   if Assigned(OriginalprgInfo) then ZAdoMalloc.Free(OriginalprgInfo);
   FFirstFetch := True;
-  inherited Open;
-  FCursorLocation := rctServer;
+  inherited;
 end;
 
 {**
@@ -519,6 +484,33 @@ begin
     DriverManager.LogMessage(lcFetchDone, IZLoggingObject(FWeakIZLoggingObjectPtr));
 end;
 
+{**
+  Moves the cursor to the given row number in
+  this <code>ResultSet</code> object.
+
+  <p>If the row number is positive, the cursor moves to
+  the given row number with respect to the
+  beginning of the result set.  The first row is row 1, the second
+  is row 2, and so on.
+
+  <p>If the given row number is negative, the cursor moves to
+  an absolute row position with respect to
+  the end of the result set.  For example, calling the method
+  <code>absolute(-1)</code> positions the
+  cursor on the last row; calling the method <code>absolute(-2)</code>
+  moves the cursor to the next-to-last row, and so on.
+
+  <p>An attempt to position the cursor beyond the first/last row in
+  the result set leaves the cursor before the first row or after
+  the last row.
+
+  <p><B>Note:</B> Calling <code>absolute(1)</code> is the same
+  as calling <code>first()</code>. Calling <code>absolute(-1)</code>
+  is the same as calling <code>last()</code>.
+
+  @return <code>true</code> if the cursor is on the result set;
+    <code>false</code> otherwise
+}
 function TZAdoResultSet.MoveAbsolute(Row: Integer): Boolean;
 begin
   FField20 := nil;
@@ -724,7 +716,7 @@ begin
                         goto Set_From_Buf;
                       end;
       VT_CY:          begin
-                        CurrToRaw(PCurrency(FValueAddr)^, '.', PAnsiChar(fByteBuffer), @Result);
+                        CurrToRaw(PCurrency(FValueAddr)^, PAnsiChar(fByteBuffer), @Result);
 Set_From_Buf:           Len := Result - PAnsiChar(fByteBuffer);
                         Result := PAnsiChar(fByteBuffer);
                       end;
@@ -820,7 +812,7 @@ begin
                         goto Set_From_Buf;
                       end;
       VT_CY:          begin
-                        CurrToUnicode(PCurrency(FValueAddr)^, '.', PWideChar(fByteBuffer), @Result);
+                        CurrToUnicode(PCurrency(FValueAddr)^, PWideChar(fByteBuffer), @Result);
 Set_From_Buf:           Len := Result - PWideChar(fByteBuffer);
                         Result := PWideChar(fByteBuffer);
                       end;
@@ -1496,25 +1488,33 @@ end;
 
 { TZADORowAccessor }
 
-{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "ConSettings" not used} {$ENDIF}
-class function TZADORowAccessor.MetadataToAccessorType(
-  ColumnInfo: TZColumnInfo; ConSettings: PZConSettings;
-  Var ColumnCodePage: Word): TZSQLType;
+constructor TZADORowAccessor.Create(ColumnsInfo: TObjectList;
+  ConSettings: PZConSettings; const OpenLobStreams: TZSortedList;
+  CachedLobs: WordBool);
+var TempColumns: TObjectList;
+  I: Integer;
+  Current: TZColumnInfo;
 begin
   {EH: usually this code is NOT nessecary if we would handle the types as the
   providers are able to. But in current state we just copy all the incompatibilities
   from the DataSets into dbc... grumble.}
-  Result := ColumnInfo.ColumnType;
-  if Result in [stAsciiStream, stUnicodeStream, stBinaryStream] then begin
-    Result := TZSQLType(Byte(Result)-3); // no streams available using ADO
-    ColumnInfo.Precision := 0;
+  TempColumns := TObjectList.Create(True);
+  CopyColumnsInfo(ColumnsInfo, TempColumns);
+  for I := 0 to TempColumns.Count -1 do begin
+    Current := TZColumnInfo(TempColumns[i]);
+    if Current.ColumnType in [stAsciiStream, stUnicodeStream, stBinaryStream] then begin
+      Current.ColumnType := TZSQLType(Byte(Current.ColumnType)-3); // no streams available using ADO
+      Current.Precision := -1;
+    end;
+    if Current.ColumnType = stString then begin
+      Current.ColumnType := stUnicodeString; // no raw chars in ADO
+      Current.ColumnCodePage := zCP_UTF16;
+    end else if Current.ColumnType = stBytes then
+      Current.ColumnCodePage := zCP_Binary;
   end;
-  if Result in [stString, stUnicodeString] then begin
-    Result := stUnicodeString; // no raw chars in ADO
-    ColumnCodePage := zCP_UTF16;
-  end;
+  inherited Create(TempColumns, ConSettings, OpenLobStreams, CachedLobs);
+  TempColumns.Free;
 end;
-{$IFDEF FPC} {$POP} {$ENDIF}
 
 {$ENDIF ZEOS_DISABLE_ADO}
 end.

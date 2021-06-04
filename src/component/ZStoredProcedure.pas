@@ -40,7 +40,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -58,15 +58,14 @@ interface
 
 uses
   Types, SysUtils, Classes, {$IFDEF MSEgui}mclasses, mdb{$ELSE}DB{$ENDIF},
-  ZDbcIntfs, ZAbstractRODataset, ZCompatibility
-  {$IFNDEF DISABLE_ZPARAM},ZDatasetParam{$ENDIF};
+  ZDbcIntfs, ZAbstractDataset, ZCompatibility;
 
 type
 
   {**
     Abstract dataset to access to stored procedures.
   }
-  TZStoredProc = class(TZAbstractRODataset)
+  TZStoredProc = class(TZAbstractDataset)
   private
     FMetaResultSet: IZResultset;
     function GetStoredProcName: string;
@@ -75,12 +74,12 @@ type
     function CreateStatement(const SQL: string; Properties: TStrings):
       IZPreparedStatement; override;
     procedure SetStatementParams(const Statement: IZPreparedStatement;
-      const ParamNames: TStringDynArray; Params: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF};
+      const ParamNames: TStringDynArray; Params: TParams;
       DataLink: TDataLink); override;
     procedure InternalOpen; override;
   protected
-    function PSIsSQLBased: Boolean; override;
   {$IFDEF WITH_IPROVIDER}
+    function PSIsSQLBased: Boolean; override;
     procedure PSExecute; override;
     {$IFDEF WITH_IPROVIDERWIDE}
     function PSGetTableNameW: WideString; override;
@@ -102,7 +101,6 @@ type
     function BOR: Boolean;
     function EOR: Boolean;
   published
-    property Connection;
     property Active;
     property ParamCheck;
     property Params;
@@ -110,13 +108,12 @@ type
     property Options;
     property StoredProcName: string read GetStoredProcName
       write SetStoredProcName;
-    property Transaction;
   end;
 
 implementation
 
 uses
-  ZMessages, ZDatasetUtils, ZDbcMetadata
+  ZAbstractRODataset, ZMessages, ZDatasetUtils, ZDbcMetadata
   {$IFDEF WITH_ASBYTES}, ZSysUtils{$ENDIF} ,FmtBCD
   {$IFDEF WITH_INLINE_ANSICOMPARETEXT}, Windows{$ENDIF};
 
@@ -154,15 +151,18 @@ end;
 }
 {$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "ParamNames/DataLink" not used} {$ENDIF}
 procedure TZStoredProc.SetStatementParams(const Statement: IZPreparedStatement;
-  const ParamNames: TStringDynArray; Params: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF}; DataLink: TDataLink);
+  const ParamNames: TStringDynArray; Params: TParams; DataLink: TDataLink);
 var
   I: Integer;
-  Param: {$IFNDEF DISABLE_ZPARAM}TZParam{$ELSE}TParam{$ENDIF};
+  Param: TParam;
 begin
-  for I := 0 to Params.Count - 1 do begin
+  for I := 0 to Params.Count - 1 do
+  begin
     Param := Params[I];
+
     if Params[I].ParamType in [ptResult, ptOutput] then
-      Continue;
+     Continue;
+
     SetStatementParam(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Statement, Param);
   end;
 end;
@@ -185,32 +185,28 @@ end;
 
 procedure TZStoredProc.SetStoredProcName(const Value: string);
 var
-  OldParams: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF};
+  OldParams: TParams;
   Catalog, Schema, ObjectName: string;
   ColumnType: TZProcedureColumnType;
   SQLType: TZSQLType;
   Precision: Integer;
-  Metadata: IZDatabaseMetadata;
-  DatabaseInfo: IZDatabaseInfo;
 begin
-  Catalog := Trim(SQL.Text);
-  ObjectName := Trim(Value);
-  if (AnsiCompareText(Catalog, ObjectName) <> 0) or ((Params.Count = 0) and
-     not (csDesigning in ComponentState) and not Active) then begin
+  if AnsiCompareText(Trim(SQL.Text), Trim(Value)) <> 0 then
+  begin
     SQL.Text := Value;
-    if ParamCheck and (Value <> '') and not (csLoading in ComponentState) and Assigned(Connection) then begin
+    if ParamCheck and (Value <> '') and not (csLoading in ComponentState) and Assigned(Connection) then
+    begin
       CheckConnected;
-      Metadata := Connection.DbcConnection.GetMetadata;
-      DatabaseInfo := Metadata.GetDatabaseInfo;
       Connection.ShowSQLHourGlass;
       try
-        SplitQualifiedObjectName(Value, DatabaseInfo.SupportsCatalogsInProcedureCalls,
-          DatabaseInfo.SupportsSchemasInProcedureCalls, Catalog, Schema, ObjectName);
-        If Catalog = '' Then Catalog := Self.Connection.Catalog;
-        Schema := Metadata.AddEscapeCharToWildcards(Schema);
-        ObjectName := Metadata.AddEscapeCharToWildcards(ObjectName);
-        FMetaResultSet := Metadata.GetProcedureColumns(Catalog, Schema, ObjectName, '');
-        OldParams := {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF}.Create;
+        SplitQualifiedObjectName(Value,
+          Connection.DbcConnection.GetMetadata.GetDatabaseInfo.SupportsCatalogsInProcedureCalls,
+          Connection.DbcConnection.GetMetadata.GetDatabaseInfo.SupportsSchemasInProcedureCalls,
+          Catalog, Schema, ObjectName);
+        Schema := Connection.DbcConnection.GetMetadata.AddEscapeCharToWildcards(Schema);
+        ObjectName := Connection.DbcConnection.GetMetadata.AddEscapeCharToWildcards(ObjectName);
+        FMetaResultSet := Connection.DbcConnection.GetMetadata.GetProcedureColumns(Catalog, Schema, ObjectName, '');
+        OldParams := TParams.Create;
         try
           OldParams.Assign(Params);
           Params.Clear;
@@ -220,16 +216,10 @@ begin
             if Ord(SQLType) >= Ord(stString)
             then Precision := FMetaResultSet.GetInt(ProcColLengthIndex)
             else Precision := FMetaResultSet.GetInt(ProcColPrecisionIndex);
-            {$IFNDEF DISABLE_ZPARAM}
-            Params.CreateParam(SQLType,
-                FMetaResultSet.GetString(ProcColColumnNameIndex),
-                ProcColDbcToDatasetType[ColumnType], Precision, FMetaResultSet.GetInt(ProcColScaleIndex));
-            {$ELSE}
             Params.CreateParam(ConvertDbcToDatasetType(SQLType,
               Connection.ControlsCodePage, Precision),
                 FMetaResultSet.GetString(ProcColColumnNameIndex),
                 ProcColDbcToDatasetType[ColumnType]);
-            {$ENDIF}
           end;
           Params.AssignValues(OldParams);
         finally
@@ -237,8 +227,6 @@ begin
         end;
       finally
         Connection.HideSQLHourGlass;
-        DatabaseInfo := nil;
-        Metadata := nil;
       end;
     end;
   end;
@@ -349,6 +337,7 @@ begin
   end;
 end;
 
+{$IFDEF WITH_IPROVIDER}
 {**
   Checks if dataset can execute SQL queries?
   @returns <code>True</code> if the query can execute SQL.
@@ -358,7 +347,6 @@ begin
   Result := False;
 end;
 
-{$IFDEF WITH_IPROVIDER}
 {**
   Gets the name of the stored procedure.
   @returns the name of this stored procedure.

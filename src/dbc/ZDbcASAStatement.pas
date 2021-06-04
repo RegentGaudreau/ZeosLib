@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -88,8 +88,7 @@ type
 
     procedure Prepare; override;
     procedure Unprepare; override;
-    /// <summary>Do tasks after the statement was closed. For example
-    ///  dispose statement handles.</summary>
+
     procedure AfterClose; override;
     procedure Cancel; override;
     function GetMoreResults: Boolean; override;
@@ -119,31 +118,8 @@ type
     procedure UnPrepareInParameters; override;
     procedure AddParamLogValue(ParamIndex: Integer; SQLWriter: TZSQLStringWriter; Var Result: SQLString); override;
   public
-    /// <summary>Sets the designated parameter to SQL <c>NULL</c>.
-    ///  <B>Note:</B> You must specify the parameter's SQL type. </summary>
-    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
-    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
-    ///  the second is 1. This will change in future to a zero based index.
-    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
-    /// <param>"SQLType" the SQL type code defined in <c>ZDbcIntfs.pas</c></param>
     procedure SetNull(Index: Integer; SQLType: TZSQLType);
-    /// <summary>Sets the designated parameter to a <c>boolean</c> value.
-    ///  The driver converts this to a SQL <c>Ordinal</c> value when it sends it
-    ///  to the database.</summary>
-    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
-    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
-    ///  the second is 1. This will change in future to a zero based index.
-    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
-    /// <param>"Value" the parameter value</param>
     procedure SetBoolean(Index: Integer; Value: Boolean);
-    /// <summary>Sets the designated parameter to a <c>Byte</c> value.
-    ///  If not supported by provider, the driver converts this to a SQL
-    ///  <c>Ordinal</c> value when it sends it to the database.</summary>
-    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
-    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
-    ///  the second is 1. This will change in future to a zero based index.
-    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
-    /// <param>"Value" the parameter value</param>
     procedure SetByte(Index: Integer; Value: Byte);
     procedure SetShort(Index: Integer; Value: ShortInt);
     procedure SetWord(Index: Integer; Value: Word);
@@ -155,27 +131,17 @@ type
     procedure SetFloat(Index: Integer; Value: Single);
     procedure SetDouble(Index: Integer; const Value: Double);
     procedure SetCurrency(Index: Integer; const Value: Currency);
-    /// <summary>Sets the designated parameter to a <c>BigDecimal(TBCD)</c> value.</summary>
-    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
-    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
-    ///  the second is 1. This will change in future to a zero based index.
-    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
-    /// <param>"Value" the parameter value</param>
-    procedure SetBigDecimal(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TBCD);
+    procedure SetBigDecimal(Index: Integer; const Value: TBCD);
     procedure SetBytes(Index: Integer; const Value: TBytes); reintroduce; overload;
     procedure SetBytes(ParameterIndex: Integer; Value: PByte; Len: NativeUInt); reintroduce; overload;
-    procedure SetGuid(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TGUID); reintroduce;
-    procedure SetDate(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZDate); reintroduce; overload;
-    procedure SetTime(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTime); reintroduce; overload;
-    procedure SetTimestamp(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTimeStamp); reintroduce; overload;
+    procedure SetGuid(Index: Integer; const Value: TGUID); reintroduce;
+    procedure SetDate(Index: Integer; const Value: TZDate); reintroduce; overload;
+    procedure SetTime(Index: Integer; const Value: TZTime); reintroduce; overload;
+    procedure SetTimestamp(Index: Integer; const Value: TZTimeStamp); reintroduce; overload;
   end;
 
   TZASACallableStatement = class(TZAbstractCallableStatement_A, IZCallableStatement)
   protected
-    /// <summary>creates an exceution Statement. Which wraps the call.</summary>
-    /// <param>"StoredProcName" the name of the stored procedure or function to
-    ///  be called.</param>
-    /// <returns>a TZAbstractPreparedStatement object.</returns>
     function CreateExecutionStatement(const StoredProcName: String): TZAbstractPreparedStatement; override;
   end;
 
@@ -202,7 +168,7 @@ begin
   FASAConnection := Connection as IZASAConnection;
   FPlainDriver := TZASAPlainDriver(FASAConnection.GetIZPlainDriver.GetInstance);
   FetchSize := BlockSize;
-  ResultSetType := rtScrollInsensitive;
+  ResultSetType := rtScrollSensitive;
   with ZClasses.TZRawSQLStringWriter.Create(40) do begin
     AddOrd(Pointer(FASAConnection.GetDBHandle), FCursorName);
     AddChar(AnsiChar('_'), FCursorName);
@@ -246,7 +212,7 @@ begin
   With FASAConnection do begin
     FSQLData := TZASASQLDA.Create(FASAConnection, Pointer(FCursorName));
     DescribeCursor;
-    NativeResultSet := TZASANativeResultSet.Create(Self, SQL, FStmtNum, FCursorName, FSQLData, LobCacheMode);
+    NativeResultSet := TZASANativeResultSet.Create(Self, SQL, FStmtNum, FCursorName, FSQLData, CachedLob);
     if ResultSetConcurrency = rcUpdatable then begin
       CachedResultSet := TZASACachedResultSet.Create(NativeResultSet, SQL, nil, ConSettings);
       CachedResultSet.SetResolver(TZASACachedResolver.Create(Self, NativeResultSet.GetMetadata));
@@ -505,7 +471,7 @@ begin
     if Assigned(FOpenResultSet)
     then Result := IZResultSet(FOpenResultSet)
     else begin
-      Result := TZASAParamererResultSet.Create(Self, SQL, FStmtNum, FCursorName, FSQLData, lcmOnLoad);
+      Result := TZASAParamererResultSet.Create(Self, SQL, FStmtNum, FCursorName, FSQLData, True);
       FOpenResultSet := Pointer(Result);
     end;
     //now fill the outparam SQLDA-Variables
@@ -538,7 +504,7 @@ begin
   RestartTimer;
   if FHasOutParams and (FOpenResultSet = nil) then begin
     //first create the ResultSet -> exact types are described
-    FOutParamResultSet := TZASAParamererResultSet.Create(Self, SQL, FStmtNum, FCursorName, FSQLData, lcmOnLoad);
+    FOutParamResultSet := TZASAParamererResultSet.Create(Self, SQL, FStmtNum, FCursorName, FSQLData, True);
     FOpenResultSet := Pointer(FOutParamResultSet);
   end;
   DBHandle := FASAConnection.GetDBHandle;
@@ -659,7 +625,7 @@ begin
 end;
 
 procedure TZASAPreparedStatement.SetBigDecimal(Index: Integer;
-  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TBCD);
+  const Value: TBCD);
 begin
   SetRawByteString(Index, BCDToSQLRaw(Value));
 end;
@@ -764,12 +730,12 @@ end;
 procedure TZASAPreparedStatement.SetCurrency(Index: Integer;
   const Value: Currency);
 begin
-  SetRawByteString(Index, CurrToRaw(Value, '.'));
+  SetRawByteString(Index, CurrToRaw(Value));
 end;
 
 {$IFDEF FPC} {$PUSH} {$WARN 5057 off : Local variable "TS" does not seem to be initialized} {$ENDIF}
 procedure TZASAPreparedStatement.SetDate(Index: Integer;
-  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZDate);
+  const Value: TZDate);
 var TS: TZASASQLDateTime;
 begin
   FillChar(TS, SizeOf(TZASASQLDateTime), #0);
@@ -813,7 +779,7 @@ begin
 end;
 
 procedure TZASAPreparedStatement.SetGuid(Index: Integer;
-  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TGUID);
+  const Value: TGUID);
 var SQLVAR: PZASASQLVAR;
 begin
   {$IFNDEF GENERIC_INDEX}
@@ -843,7 +809,7 @@ begin
     DT_FLOAT            : SQLWriter.AddFloat(PSingle(SQLVAR.sqldata)^, Result);
     DT_DOUBLE           : SQLWriter.AddFloat(PDouble(SQLVAR.sqldata)^, Result);
     DT_VARCHAR          : {$IFDEF UNICODE} begin
-                            PRawToUnicode(PAnsiChar(@PZASASQLSTRING(SQLVAR.sqldata).data[0]), PZASASQLSTRING(SQLVAR.sqldata).length, FClientCP, FUniTemp);
+                            FUniTemp := PRawToUnicode(PAnsiChar(@PZASASQLSTRING(SQLVAR.sqldata).data[0]), PZASASQLSTRING(SQLVAR.sqldata).length, FClientCP);
                             SQLWriter.AddTextQuoted(FUniTemp, #39, Result);
                           end;
                           {$ELSE}
@@ -883,7 +849,7 @@ begin
                           then SQLWriter.AddText('(FALSE)', Result)
                           else SQLWriter.AddText('(TRUE)', Result);
     DT_NVARCHAR         : {$IFDEF UNICODE} begin
-                            PRawToUnicode(PAnsiChar(@PZASASQLSTRING(SQLVAR.sqldata).data[0]), PZASASQLSTRING(SQLVAR.sqldata).length, zCP_UTF8, FUniTemp);
+                            FUniTemp := PRawToUnicode(PAnsiChar(@PZASASQLSTRING(SQLVAR.sqldata).data[0]), PZASASQLSTRING(SQLVAR.sqldata).length, zCP_UTF8);
                             SQLWriter.AddTextQuoted(FUniTemp, #39, Result);
                             FUniTemp := '';
                           end;
@@ -961,7 +927,7 @@ end;
 
 {$IFDEF FPC} {$PUSH} {$WARN 5057 off : Local variable "TS" does not seem to be initialized} {$ENDIF}
 procedure TZASAPreparedStatement.SetTime(Index: Integer;
-  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTime);
+  const Value: TZTime);
 var TS: TZASASQLDateTime;
 begin
   FillChar(TS, SizeOf(TZASASQLDateTime), #0);
@@ -975,7 +941,7 @@ end;
 
 {$IFDEF FPC} {$PUSH} {$WARN 5057 off : Local variable "TS" does not seem to be initialized} {$ENDIF}
 procedure TZASAPreparedStatement.SetTimestamp(Index: Integer;
-  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTimeStamp);
+  const Value: TZTimeStamp);
 var TS: TZASASQLDateTime;
 begin
   FillChar(TS, SizeOf(TZASASQLDateTime), #0);

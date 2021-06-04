@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -74,8 +74,6 @@ uses
 type
 
   TWaitMethod = procedure of object;
-
-  TZProtectedAbstractRWTxnUpdateObjDataSet = Class(TZAbstractRWTxnUpdateObjDataSet);
 
   { TZUpdateSQLEditForm }
 
@@ -126,7 +124,7 @@ type
     procedure SQLMemoKeyPress(Sender: TObject; var Key: Char);
   private
     StmtIndex: Integer;
-    DataSet: TZProtectedAbstractRWTxnUpdateObjDataSet;
+    DataSet: TZAbstractDataset;
     QuoteChar: string;
     ConnectionOpened: Boolean;
     UpdateSQL: TZUpdateSQL;
@@ -601,9 +599,9 @@ var
 begin
   Result := False;
   ConnectionOpened := False;
-  if Assigned(UpdateSQL.DataSet) and (UpdateSQL.DataSet is TZAbstractRWTxnUpdateObjDataSet) then
+  if Assigned(UpdateSQL.DataSet) and (UpdateSQL.DataSet is TZAbstractDataset) then
   begin
-    DataSet := TZProtectedAbstractRWTxnUpdateObjDataSet(UpdateSQL.DataSet);
+    DataSet := TZAbstractDataset(UpdateSQL.DataSet);
     DataSetName := Format('%s%s%s', [DataSet.Owner.Name, DotSep, DataSet.Name]);
     if Assigned(DataSet.Connection) and not DataSet.Connection.Connected then
     begin
@@ -893,7 +891,7 @@ begin
 end;
 
 type
-  THackDataSet = class(TZAbstractRWDataSet);
+  THackDataSet = class(TZAbstractDataset);
   
 procedure TZUpdateSQLEditForm.InitUpdateTableNames;
 var
@@ -904,28 +902,34 @@ var
   SelectSchema: IZSelectSchema;
 begin
   QuoteChar := '""';
-  if Assigned(DataSet) and Assigned(DataSet.Connection) and DataSet.Connection.Connected then begin
+  if Assigned(DataSet) and Assigned(DataSet.Connection)
+    and Assigned(DataSet.Connection.DbcConnection)then
+  begin
     QuoteChar := DataSet.Connection.DbcConnection.GetMetadata.GetDatabaseInfo.
       GetIdentifierQuoteString;
     if Length(QuoteChar) = 1 then
       QuoteChar := QuoteChar + QuoteChar;
     { Parses the Select statement and retrieves a schema object. }
-    Tokenizer := DataSet.Connection.DbcConnection.GetTokenizer;
-    StatementAnalyser := DataSet.Connection.DbcConnection.GetStatementAnalyser;
+    Tokenizer := DataSet.Connection.DbcDriver.GetTokenizer;
+    StatementAnalyser := DataSet.Connection.DbcDriver.GetStatementAnalyser;
     SelectSchema := StatementAnalyser.DefineSelectSchemaFromQuery(Tokenizer,
       THackDataSet(DataSet).SQL.Text);
-    if Assigned(SelectSchema) then begin
+    if Assigned(SelectSchema) then
+    begin
       UpdateTableName.Clear;
       for I := 0 to SelectSchema.TableCount - 1 do
         UpdateTableName.Items.Add(SelectSchema.Tables[I].Table);//!!!Schema support
     end;
-  end else if Assigned(Dataset) then begin
-    TableName := '';
-    if SQLText[ukModify].Count > 0 then
-      ParseUpdateSql(SQLText[ukModify].Text, QuoteChar, TableName, nil, nil);
-    if TableName <> '' then
-      UpdateTableName.Items.Add(TableName);
-  end;
+  end
+  else
+    if Assigned(Dataset) then
+    begin
+      TableName := '';
+      if SQLText[ukModify].Count > 0 then
+        ParseUpdateSql(SQLText[ukModify].Text, QuoteChar, TableName, nil, nil);
+      if TableName <> '' then
+        UpdateTableName.Items.Add(TableName);
+    end;
   if UpdateTableName.Items.Count > 0 then
      UpdateTableName.ItemIndex := 0;
 end;

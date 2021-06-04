@@ -66,13 +66,9 @@ type
 
   {** Implements a test case for class TZAbstractDriver and Utilities. }
   TZTestDbcInterbaseCase = class(TZAbstractDbcSQLTestCase)
-  private
-    FEventsReceived: TStrings;
-    procedure OnEvent(var Event: TZEventData);
   protected
 //    function GetSupportedProtocols: string; override;
     function SupportsConfig(Config: TZConnectionConfig): Boolean; override;
-
   published
     procedure TestConnection;
     procedure TestStatement;
@@ -96,10 +92,6 @@ type
     procedure TestLongStatements;
     procedure Test_GENERATED_ALWAYS_64;
     procedure Test_GENERATED_BY_DEFAULT_64;
-    procedure Test_DECFIXED;
-    procedure Test_TIMEZONE;
-    procedure Test_IBFBEventListener;
-    procedure Test_Ping;
   end;
 
 {$ENDIF DISABLE_INTERBASE_AND_FIREBIRD}
@@ -108,7 +100,7 @@ implementation
 
 uses SysUtils, Types,
   ZTestConsts, ZTestCase, ZVariant, ZMessages, ZSysUtils,
-  ZDbcInterbaseFirebirdMetadata, ZDbcFirebirdInterbase, ZDbcLogging;
+  ZDbcInterbaseFirebirdMetadata, ZDbcFirebirdInterbase;
 
 { TZTestDbcInterbaseCase }
 
@@ -212,11 +204,6 @@ begin
       Stmt := nil;
     end;
   end;
-end;
-
-procedure TZTestDbcInterbaseCase.OnEvent(var Event: TZEventData);
-begin
-  FEventsReceived.Add(Event.Name)
 end;
 
 {**
@@ -508,126 +495,6 @@ begin
   Statement.Close;
 end;
 
-procedure TZTestDbcInterbaseCase.Test_DECFIXED;
-var
-  Statement: IZStatement;
-  ResultSet: IZResultSet;
-  TableType: TStringDynArray;
-begin
-  Statement := Connection.CreateStatement;
-  try
-    CheckNotNull(Statement);
-    if (Connection.GetMetadata.GetDatabaseInfo.GetDatabaseProductName <> 'Firebird') or (Connection.GetHostVersion < EncodeSQLVersioning(4, 0, 0)) then
-      Exit;
-    ResultSet := nil;
-    TableType := nil;
-    SetLength(TableType, 1);
-    TableType[0] := 'TABLE';
-    try
-      ResultSet := Connection.GetMetadata.GetTables('','','DECFIXED_VALUES',TableType);
-      if ResultSet.Next then
-        Statement.ExecuteUpdate('drop table DECFIXED_VALUES');
-      Statement.ExecuteUpdate('CREATE TABLE DECFIXED_VALUES( '+
-        'id bigint GENERATED ALWAYS AS IDENTITY NOT NULL, '+
-        'DECIMAL_34_0 decimal(34,0) NOT NULL, '+
-        'CONSTRAINT pk_DECFIXED_VALUES_id PRIMARY KEY(id)) ');
-      Statement.ExecuteUpdate('insert into DECFIXED_VALUES(DECIMAL_34_0) '+
-        'VALUES(1234567890123456789012345678901234)');
-      Statement.SetResultSetType(rtScrollInsensitive);
-      Statement.SetResultSetConcurrency(rcUpdatable);
-
-      ResultSet := Statement.ExecuteQuery('SELECT * FROM DECFIXED_VALUES');
-      try
-        CheckNotNull(ResultSet);
-        ResultSet.Next;
-        CheckEquals('1234567890123456789012345678901234', ResultSet.GetString(FirstDbcIndex+1), 'the string value of field DECIMAL_34_0');
-        (*ResultSet.MoveToInsertRow;
-        Resultset.UpdateULong(FirstDbcIndex+1, High(Uint64));
-        ResultSet.InsertRow;
-        CheckFalse(ResultSet.IsNull(FirstDbcIndex), 'the generated always id should have a value');
-        Check(ResultSet.GetLong(FirstDbcIndex) > 0, 'the generated always id should be greater then zero');
-        ResultSet.MoveToInsertRow;
-        ResultSet.UpdateString(FirstDbcIndex+1, 'Test_GENERATED_ALWAYS_64_2');
-        ResultSet.InsertRow;
-        CheckFalse(ResultSet.IsNull(FirstDbcIndex), 'the generated always id should have a value');
-        Check(ResultSet.GetLong(FirstDbcIndex) > 0, 'the generated always id should be greater then zero');*)
-      finally
-        ResultSet.Close;
-        ResultSet := nil;
-      end;
-    finally
-      Statement.ExecuteUpdate('drop table DECFIXED_VALUES');
-      Statement.Close;
-    end;
-  finally
-    Connection.Close;
-  end;
-end;
-
-procedure TZTestDbcInterbaseCase.Test_IBFBEventListener;
-const EventCount = 15;
-var Listener: IZEventListener;
-    EndTime: TDateTime;
-    Events: TStrings;
-    I: Integer;
-    S: String;
-    InterbaseFirebirdConnection: IZInterbaseFirebirdConnection;
-begin
-  Check(Connection <> nil);
-  Connection.Open;
-  if (Connection.GetServerProvider <> spIB_FB) or (Connection.QueryInterface(IZInterbaseFirebirdConnection, InterbaseFirebirdConnection) <> S_OK) or
-      not InterbaseFirebirdConnection.IsFirebirdLib then //Interbase until v2020 does not support EXECUTE BLOCK syntax
-    Exit;
-
-  Listener := Connection.GetEventListener(OnEvent, True, nil);
-  Events := TStringList.Create;
-  FEventsReceived := TStringList.Create;
-  try
-    Check(Listener <> nil);
-    CheckFalse(Listener.IsListening);
-    for i := 1 to EventCount do
-      Events.Add('zeostest'+IntToStr(I));;
-    Listener.Listen(Events, OnEvent);
-    Check(Listener.IsListening);
-    Sleep(10);
-    CheckEquals(0, FEventsReceived.Count, 'There should no event beeing  posted.');
-    S := 'EXECUTE BLOCK AS BEGIN POST_EVENT '+QuotedStr(Events[0]);
-    for i := 1 to Events.Count -1 do
-      S := S +'; POST_EVENT '+QuotedStr(Events[i]);
-    S := S+'; END';
-    Connection.ExecuteImmediat(S, lcExecute);
-    Sleep(10);
-    EndTime := IncSecond(Now, 2);
-    while (FEventsReceived.Count < Events.Count) and (EndTime > Now) do
-      Sleep(0);
-    CheckEquals(Events.Count, FEventsReceived.Count, 'Didn''t get all interbase events.');
-    S := 'EXECUTE BLOCK AS BEGIN POST_EVENT '+QuotedStr(Events[1]);
-    for i := 2 to Events.Count -2 do
-      S := S +'; POST_EVENT '+QuotedStr(Events[i]);
-    S := S+'; END';
-    Connection.ExecuteImmediat(S, lcExecute);
-    Sleep(10);
-    EndTime := IncSecond(Now, 2);
-    while (FEventsReceived.Count < (EventCount + EventCount-2)) and (EndTime > Now) do
-      Sleep(0);
-    Listener.Unlisten;
-    CheckFalse(Listener.IsListening);
-    CheckFalse(Connection.IsClosed);
-  finally
-    if Listener <> nil then
-      Connection.CloseEventListener(Listener);
-    FreeAndNil(Events);
-    FreeAndNil(FEventsReceived);
-  end;
-end;
-
-procedure TZTestDbcInterbaseCase.Test_Ping;
-begin
-  Connection.Open;
-  CheckFalse(Connection.IsClosed);
-  Check(Connection.PingServer = 0);
-end;
-
 procedure TZTestDbcInterbaseCase.Test_GENERATED_ALWAYS_64;
 var
   Statement: IZStatement;
@@ -637,10 +504,9 @@ begin
   Statement := Connection.CreateStatement;
   try
     CheckNotNull(Statement);
-    if (Connection.GetMetadata.GetDatabaseInfo.GetDatabaseProductName <> 'Firebird') or (Connection.GetHostVersion < EncodeSQLVersioning(4, 0, 0)) then
+    if (Connection as IZInterbaseFirebirdConnection).IsInterbaseLib or (Connection.GetHostVersion < EncodeSQLVersioning(4, 0, 0)) then
       Exit;
     ResultSet := nil;
-    TableType := nil;
     SetLength(TableType, 1);
     TableType[0] := 'TABLE';
     try
@@ -690,14 +556,13 @@ begin
   Statement := Connection.CreateStatement;
   try
     CheckNotNull(Statement);
-    if (Connection.GetMetadata.GetDatabaseInfo.GetDatabaseProductName <> 'Firebird') or (Connection.GetHostVersion < EncodeSQLVersioning(3, 0, 6)) then
+    if (Connection as IZInterbaseFirebirdConnection).IsInterbaseLib or (Connection.GetHostVersion < EncodeSQLVersioning(3, 0, 6)) then
       Exit;
     ResultSet := nil;
-    TableType := nil;
     SetLength(TableType, 1);
     TableType[0] := 'TABLE';
     try
-      ResultSet := Connection.GetMetadata.GetTables('','','GENERATED_BY_DEFAULT_64',TableType);
+      ResultSet := Connection.GetMetadata.GetTables('','','GENERATED_ALWAYS_64',TableType);
       if ResultSet.Next then
         Statement.ExecuteUpdate('drop table GENERATED_BY_DEFAULT_64');
       Statement.ExecuteUpdate('CREATE TABLE GENERATED_BY_DEFAULT_64 ( '+
@@ -728,60 +593,6 @@ begin
       end;
     finally
       Statement.ExecuteUpdate('drop table GENERATED_BY_DEFAULT_64');
-      Statement.Close;
-    end;
-  finally
-    Connection.Close;
-  end;
-end;
-
-procedure TZTestDbcInterbaseCase.Test_TIMEZONE;
-var
-  Statement: IZStatement;
-  ResultSet: IZResultSet;
-  TableType: TStringDynArray;
-begin
-  Statement := Connection.CreateStatement;
-  try
-    CheckNotNull(Statement);
-    if (Connection.GetMetadata.GetDatabaseInfo.GetDatabaseProductName <> 'Firebird') or (Connection.GetHostVersion < EncodeSQLVersioning(4, 0, 0)) then
-      Exit;
-    ResultSet := nil;
-    TableType := nil;
-    SetLength(TableType, 1);
-    TableType[0] := 'TABLE';
-    try
-      ResultSet := Connection.GetMetadata.GetTables('','','TIME_ZONE_VALUES',TableType);
-      if ResultSet.Next then
-        Statement.ExecuteUpdate('drop table TIME_ZONE_VALUES');
-      Statement.ExecuteUpdate('CREATE TABLE TIME_ZONE_VALUES( '+
-        'id bigint GENERATED ALWAYS AS IDENTITY NOT NULL, '+
-        '"time" TIME WITH TIME ZONE NOT NULL, '+
-        '"timestamp" TIMESTAMP WITH TIME ZONE NOT NULL, '+
-        'CONSTRAINT pk_TIME_ZONE_VALUES_id PRIMARY KEY(id)) ');
-      Statement.SetResultSetType(rtScrollInsensitive);
-      Statement.SetResultSetConcurrency(rcUpdatable);
-
-      ResultSet := Statement.ExecuteQuery('SELECT * FROM TIME_ZONE_VALUES');
-      try
-        CheckNotNull(ResultSet);
-        ResultSet.MoveToInsertRow;
-        Resultset.UpdateTime(FirstDbcIndex+1, EncodeTime(10,10,10,10));
-        Resultset.UpdateTimestamp(FirstDbcIndex+2, EncodeDate(2020,9,1)+EncodeTime(10,10,10,10));
-        ResultSet.InsertRow;
-        CheckFalse(ResultSet.IsNull(FirstDbcIndex), 'the generated always id should have a value');
-        Check(ResultSet.GetLong(FirstDbcIndex) > 0, 'the generated always id should be greater then zero');
-        {ResultSet.MoveToInsertRow;
-        ResultSet.UpdateString(FirstDbcIndex+1, 'Test_GENERATED_ALWAYS_64_2');
-        ResultSet.InsertRow;
-        CheckFalse(ResultSet.IsNull(FirstDbcIndex), 'the generated always id should have a value');
-        Check(ResultSet.GetLong(FirstDbcIndex) > 0, 'the generated always id should be greater then zero');}
-      finally
-        ResultSet.Close;
-        ResultSet := nil;
-      end;
-    finally
-      Statement.ExecuteUpdate('drop table TIME_ZONE_VALUES');
       Statement.Close;
     end;
   finally

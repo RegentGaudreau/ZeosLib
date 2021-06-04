@@ -90,7 +90,7 @@ type
     {$IFDEF FPC}
     frefcount : longint;
     { implement methods of IUnknown }
-    {$IFDEF WITH_NEWTOBJECT}
+    {$IFDEF FPC2_5UP}
     function QueryInterface({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} iid : tguid; out obj) : HResult;{$IFNDEF WINDOWS}cdecl{$ELSE}stdcall{$ENDIF}; virtual;
     function _AddRef : longint;{$IFNDEF WINDOWS}cdecl{$ELSE}stdcall{$ENDIF};
     function _Release : longint;{$IFNDEF WINDOWS}cdecl{$ELSE}stdcall{$ENDIF};
@@ -568,7 +568,7 @@ procedure TZAbstractTestCase.CheckNotEquals(Expected, Actual: WideString;
   const Msg: string);
 begin
   if (Expected = Actual) then
-    Fail(Msg + ComparisonMsg(String(Expected), String(Actual){$IFDEF WITH_ComparisonMsg_aCheckEqual}, False{$ENDIF}))
+    Fail(Msg + ComparisonMsg(String(Expected), String(Actual), False))
   else
     Check(True);
 end;
@@ -587,7 +587,7 @@ procedure TZAbstractTestCase.CheckNotEquals(Expected, Actual: UInt64;
   const Msg: string);
 begin
   if (Expected = Actual) then
-    Fail(Msg + ComparisonMsg(IntToStr(Expected), IntToStr(Actual) {$IFDEF WITH_ComparisonMsg_aCheckEqual}, False{$ENDIF}))
+    Fail(Msg + ComparisonMsg(IntToStr(Expected), IntToStr(Actual), False))
   else
     Check(True);
 end;
@@ -602,7 +602,7 @@ procedure TZAbstractTestCase.CheckNotEquals(Expected, Actual: Int64;
   const Msg: string);
 begin
   if (Expected = Actual) then
-    Fail(Msg + ComparisonMsg(IntToStr(Expected), IntToStr(Actual) {$IFDEF WITH_ComparisonMsg_aCheckEqual}, False{$ENDIF}))
+    Fail(Msg + ComparisonMsg(IntToStr(Expected), IntToStr(Actual), False))
   else
     Check(True);
 end;
@@ -788,7 +788,7 @@ initialization
   encDefaultSystemCodePage
     {$ELSE}
       {$IFDEF LCL}
-    encUTF8
+    encCP_UTF8
       {$ELSE}
     encDefaultSystemCodePage
       {$ENDIF}

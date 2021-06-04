@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -70,13 +70,11 @@ type
   PZInterbaseFirerbirdParam = ^TZInterbaseFirerbirdParam;
   TZInterbaseFirerbirdParam = record
     sqltype:            Cardinal;      { datatype of field (normalized) }
-    sqlsubtype:         Cardinal;      { subtype of field (normalized) }
     sqlscale:           Integer;       { scale factor }
     codepage:           word;          { the codepage of the field }
     sqllen:             Cardinal;      { length of data area }
     sqldata:            PAnsiChar;     { address of data }
     sqlind:             PISC_SHORT;    { address of indicator }
-    QMarkPosition:      Cardinal;      { the position if the Question Mark in the raw SQL string}
   end;
   PZInterbaseFirerbirdParamArray = ^TZInterbaseFirerbirdParamArray;
   TZInterbaseFirerbirdParamArray = array[byte] of TZInterbaseFirerbirdParam;
@@ -116,7 +114,7 @@ type
   { Interbase SQL Error Class}
   EZIBSQLException = class(EZSQLException)
   public
-    constructor Create(const Msg: string; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} StatusVector: TZIBStatusVector; const SQL: string);
+    constructor Create(const Msg: string; const StatusVector: TZIBStatusVector; const SQL: string);
   end;
 
   TZIbParamValueType = (
@@ -198,17 +196,7 @@ type
     function GetIbSqlType(const Index: Word): Smallint;
     function GetIbSqlSubType(const Index: Word): Smallint;
     function GetIbSqlLen(const Index: Word): Smallint;
-    /// <summary>Releases all driver handles and set the object in a closed
-    ///  Zombi mode waiting for destruction. Each known supplementary object,
-    ///  supporting this interface, gets called too. This may be a recursive
-    ///  call from parant to childs or vice vera. So finally all resources
-    ///  to the servers are released. This method is triggered by a connecton
-    ///  loss. Don't use it by hand except you know what you are doing.</summary>
-    /// <param>"Sender" the object that did notice the connection lost.</param>
-    /// <param>"AError" a reference to an EZSQLConnectionLost error.
-    ///  You may free and nil the error object so no Error is thrown by the
-    ///  generating method. So we start from the premisse you have your own
-    ///  error handling in any kind.</param>
+
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost);
   end;
 
@@ -430,7 +418,7 @@ function ReadInterbase6NumberWithInc(const PlainDriver: TZInterbaseFirebirdPlain
   @param Buffer - a buffer returned by driver
   @return - a number read
 }
-function ReadInterbase6Number(const PlainDriver: TZInterbasePlainDriver; pBuf: PByte): Integer; {$IFDEF WITH_INLINE} inline;{$ENDIF}
+function ReadInterbase6Number(const PlainDriver: TZInterbasePlainDriver; const Buffer): Integer; {$IFDEF WITH_INLINE} inline;{$ENDIF}
 
 //procedure ScaledOrdinal2Raw(const Value: Int128; Buf: PAnsiChar; PEnd: PPAnsiChar; Scale: Byte); overload;
 //procedure ScaledOrdinal2Raw(const Value: UInt128; Buf: PAnsiChar; PEnd: PPAnsiChar; Scale: Byte); overload;
@@ -444,8 +432,7 @@ procedure ScaledOrdinal2Unicode(const Value: UInt64; Buf: PWideChar; PEnd: ZPPWi
 procedure ScaledOrdinal2Unicode(Value: Integer; Buf: PWideChar; PEnd: ZPPWideChar; Scale: Byte); overload;
 procedure ScaledOrdinal2Unicode(Value: Cardinal; Buf: PWideChar; PEnd: ZPPWideChar; Scale: Byte); overload;
 
-procedure BCD2ScaledOrdinal({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TBCD;
-  Dest: Pointer; DestSize, Scale: Byte);
+procedure BCD2ScaledOrdinal(const Value: TBCD; Dest: Pointer; DestSize, Scale: Byte);
 
 function XSQLDA_LENGTH(Value: LongInt): LongInt;
 function XSQLDA_LENGTH_V2(Value: LongInt): LongInt;
@@ -695,11 +682,12 @@ end;
   @param Buffer - a buffer returned by driver
   @return - a number read
 }
-function ReadInterbase6Number(const PlainDriver: TZInterbasePlainDriver; pBuf: PByte): Integer; {$IFDEF WITH_INLINE} inline;{$ENDIF}
-var Len: Integer;
+function ReadInterbase6Number(const PlainDriver: TZInterbasePlainDriver; const Buffer): Integer; {$IFDEF WITH_INLINE} inline;{$ENDIF}
+var
+  pBuf: PAnsiChar;
 begin
-  Len := PlainDriver.isc_vax_integer(PAnsiChar(pBuf), 2);
-  Result := PlainDriver.isc_vax_integer(PAnsiChar(pBuf)+2, Len);
+  pBuf := @Buffer;
+  Result := ReadInterbase6NumberWithInc(PlainDriver, pBuf);
 end;
 
 procedure ScaledOrdinal2Raw(const Value: Int64; Buf: PAnsiChar; PEnd: PPAnsiChar;
@@ -1026,8 +1014,8 @@ testBCD:  Scale := Abs(Scale);
         else //http://sourceforge.net/p/zeoslib/tickets/111/
           Result := stBinaryStream;
       end;
-    blr_dec64: Result := stDouble; //assume the DEC16 has 64 bit and an 16digit mantissa whereas a double has 15digit mantissa..Exaptable?
-    blr_dec128: Result := stString; //yet defined, we have no Soft-128Bit Decimal128 IEEE 754
+    blr_dec64,
+    blr_dec128,
     blr_int128: Result := stBigDecimal;
     else
       Result := ZDbcIntfs.stUnknown;
@@ -1116,12 +1104,12 @@ end;
 
 { EZIBSQLException }
 
-constructor EZIBSQLException.Create(const Msg: string; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} StatusVector: TZIBStatusVector; const SQL: string);
+constructor EZIBSQLException.Create(const Msg: string; const StatusVector: TZIBStatusVector; const SQL: string);
 var
   i, SQLErrCode, IBErrorCode: Integer;
   IBStatusCode: String;
 begin
-  SQLErrCode := 0; IBErrorCode := 0; IBStatusCode := '';
+  SQLErrCode := 0; IBErrorCode := 0;
   // find main IB code
   for i := Low(StatusVector) to High(StatusVector) do
     if StatusVector[i].IBDataType = isc_arg_gds then
@@ -1278,16 +1266,11 @@ begin
           Result := stBigDecimal;
     SQL_FLOAT:
       Result := stFloat;
-    SQL_DEC16, SQL_DEC34,
     SQL_DOUBLE, SQL_D_FLOAT:
       Result := stDouble;
     SQL_BOOLEAN, SQL_BOOLEAN_FB:
       Result := stBoolean;
-    SQL_TIMESTAMP_TZ_EX,
-    SQL_TIMESTAMP_TZ,
     SQL_DATE: Result := stTimestamp;
-    SQL_TIME_TZ_EX,
-    SQL_TIME_TZ,
     SQL_TYPE_TIME: Result := stTime;
     SQL_TYPE_DATE: Result := stDate;
     SQL_INT64:
@@ -1303,7 +1286,6 @@ begin
         then Result := stAsciiStream
         else Result := stBinaryStream;
     SQL_ARRAY: Result := stArray;
-    SQL_DEC_FIXED, SQL_INT128: Result := stBigDecimal;
     else  Result := stString;
   end;
 end;
@@ -1511,8 +1493,7 @@ begin
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
-procedure BCD2ScaledOrdinal({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TBCD;
-  Dest: Pointer; DestSize, Scale: Byte);
+procedure BCD2ScaledOrdinal(const Value: TBCD; Dest: Pointer; DestSize, Scale: Byte);
 var
   LastNibbleByteIDX, BCDScale, P, I, F: Byte;
   i64: Int64;
@@ -1531,10 +1512,7 @@ begin
     F := Value.Fraction[i];
     if F = 0
     then Inc(P)
-    else if (P = LastNibbleByteIDX) and Odd(Value.Precision) then begin
-      i64 := Value.Fraction[LastNibbleByteIDX] shr 4;
-      goto finalize
-    end else begin
+    else begin
       i64 := ZBcdNibble2Base100ByteLookup[F];
       if P = LastNibbleByteIDX
       then goto finalize

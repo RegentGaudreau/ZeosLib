@@ -5,10 +5,3 @@
 /*==============================================================*/
 
 drop table if exists "RANMeter";
-
-
-drop table if exists family;
-
-drop table if exists clients;
-
-drop domain if exists yesno;

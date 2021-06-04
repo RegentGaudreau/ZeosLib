@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -55,27 +55,21 @@ interface
 
 {$I ZParseSql.inc}
 
-{$IF defined(ZEOS_DISABLE_ORACLE) and defined(ZEOS_DISABLE_ADO) and
-     defined(ZEOS_DISABLE_OLEDB) and defined(ZEOS_DISABLE_ODBC) and defined(ZEOS_DISABLE_PROXY)}
-  {$DEFINE EMPTY_ZOracleAnalyser}
-{$IFEND}
-
-{$IFNDEF EMPTY_ZOracleAnalyser}
+{$IFNDEF ZEOS_DISABLE_ORACLE}
 
 uses Classes, ZGenericSqlAnalyser;
 
 type
 
-  /// <summary>Implements an Oracle statements analyser.</summary>
+  {** Implements an Oracle statements analyser. }
   TZOracleStatementAnalyser = class (TZGenericStatementAnalyser)
   public
-    /// <summary>Creates the object and assignes the main properties.</summary>
     constructor Create;
   end;
 
-{$ENDIF EMPTY_ZOracleAnalyser}
+{$ENDIF ZEOS_DISABLE_ORACLE}
 implementation
-{$IFNDEF EMPTY_ZOracleAnalyser}
+{$IFNDEF ZEOS_DISABLE_ORACLE}
 
 const
   {** The generic constants.}
@@ -96,6 +90,9 @@ const
 
 { TZOracleStatementAnalyser }
 
+{**
+  Creates the object and assignes the main properties.
+}
 constructor TZOracleStatementAnalyser.Create;
 begin
   SectionNames := ArrayToStrings(OracleSectionNames);
@@ -104,6 +101,6 @@ begin
   FromClauses := ArrayToStrings(OracleFromClauses);
 end;
 
-{$ENDIF EMPTY_ZOracleAnalyser}
+{$ENDIF ZEOS_DISABLE_ORACLE}
 
 end.

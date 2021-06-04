@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -62,160 +62,161 @@ uses
 
 type
   {** Implements a E function. }
-  TZEFunction = class (TZAbstractFunction, IZFunction)
+  TZEFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a PI function. }
-  TZPIFunction = class (TZAbstractFunction, IZFunction)
+  TZPIFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a RND function. }
-  TZRndFunction = class (TZAbstractFunction, IZFunction)
+  TZRndFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a ABS function. }
-  TZAbsFunction = class (TZAbstractFunction, IZFunction)
+  TZAbsFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
 {** Trigonometric }
   {** Implements a COS function. }
-  TZCosFunction = class (TZAbstractFunction, IZFunction)
+  TZCosFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a COT function. }
-  TZCotFunction = class (TZAbstractFunction, IZFunction)
+  TZCotFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a SIN function. }
-  TZSinFunction = class (TZAbstractFunction, IZFunction)
+  TZSinFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a TAN function. }
-  TZTanFunction = class (TZAbstractFunction, IZFunction)
+  TZTanFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a ACOS function. }
-  TZAcosFunction = class (TZAbstractFunction, IZFunction)
+  TZAcosFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a ASIN function. }
-  TZAsinFunction = class (TZAbstractFunction, IZFunction)
+  TZAsinFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a ATAN function. }
-  TZAtanFunction = class (TZAbstractFunction, IZFunction)
+  TZAtanFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
 {** Rounding }
   {** Implements a ROUND function. }
-  TZRoundFunction = class (TZAbstractFunction, IZFunction)
+  TZRoundFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a TRUNC function. }
-  TZTruncFunction = class (TZAbstractFunction, IZFunction)
+  TZTruncFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a INT function. }
-  TZIntFunction = class (TZAbstractFunction, IZFunction)
+  TZIntFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a FRAC function. }
-  TZFracFunction = class (TZAbstractFunction, IZFunction)
+  TZFracFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a CEIL function. }
-  TZCeilFunction = class (TZAbstractFunction, IZFunction)
+  TZCeilFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a FLOOR function. }
-  TZFloorFunction = class (TZAbstractFunction, IZFunction)
+  TZFloorFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
 {** Logarithmic }
   {** Implements a EXP function. }
-  TZExpFunction = class (TZAbstractFunction, IZFunction)
+  TZExpFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a LOG function. }
-  TZLogFunction = class (TZAbstractFunction, IZFunction)
+  TZLogFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a LOG10 function. }
-  TZLog10Function = class (TZAbstractFunction, IZFunction)
+  TZLog10Function = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a SQR function. }
-  TZSqrFunction = class (TZAbstractFunction, IZFunction)
+  TZSqrFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
 procedure AddMathFunctions(Functions : TZFunctionsList);
 
 implementation
 
-uses Math, FmtBCD;
+uses
+  Math, FmtBCD;
 
 { TZEFunction }
 

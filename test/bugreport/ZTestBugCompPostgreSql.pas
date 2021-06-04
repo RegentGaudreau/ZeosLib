@@ -78,7 +78,7 @@ type
     TestSF274_GotNotified: Boolean;
     procedure InternalTestSF224(Query: TZAbstractRODataset);
     procedure TestSF274_OnNotify(Sender: TObject; Event: string;
-        ProcessID: Integer; Payload: string; var CancelEvents: Boolean);
+        ProcessID: Integer; Payload: string);
   published
     procedure Test707339;
     procedure Test707337;
@@ -117,9 +117,6 @@ type
     {$ENDIF WITH_TDATASETPROVIDER}
     procedure TestSF354;
     procedure TestSF394;
-    procedure TestSF460_A;
-    procedure TestSF460_B;
-    procedure TestSF478;
   end;
 
   TZTestCompPostgreSQLBugReportMBCs = class(TZAbstractCompSQLTestCaseMBCs)
@@ -137,7 +134,7 @@ implementation
 {$IFNDEF ZEOS_DISABLE_POSTGRESQL}
 
 uses ZSysUtils, ZTestCase, ZPgEventAlerter, DateUtils, ZEncoding,
-  ZDbcPostgreSqlMetadata, ZPlainPostgreSqlDriver, ZDatasetUtils, ZFormatSettings,
+  ZDbcPostgreSqlMetadata, ZPlainPostgreSqlDriver, ZDatasetUtils,
   (*{$IFDEF WITH_VCL_PREFIX}Vcl.Forms{$ELSE}Forms{$ENDIF}*)ZTestConfig
   {$IFDEF WITH_TDATASETPROVIDER},Provider, DBClient{$ENDIF};
 
@@ -1339,13 +1336,11 @@ begin
   end;
 end;
 
-{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Sender,..." not used} {$ENDIF}
 procedure TZTestCompPostgreSQLBugReport.TestSF274_OnNotify(Sender: TObject; Event: string;
-        ProcessID: Integer; Payload: string; var CancelEvents: Boolean);
+        ProcessID: Integer; Payload: string);
 begin
   TestSF274_GotNotified := true;
 end;
-{$IFDEF FPC} {$POP} {$ENDIF}
 
 procedure TZTestCompPostgreSQLBugReport.TestMarsupilami1;
 var
@@ -1481,96 +1476,6 @@ begin
     FreeAndNil(Query);
   end;
 end;
-
-procedure TZTestCompPostgreSQLBugReport.TestSF460_A;
-var
-  Query: TZQuery;
-begin
-  Query := CreateQuery;
-  try
-    Query.SQL.Append('SELECT 1 AS T');
-    Query.SQL.Append('FROM clients c');
-    Query.SQL.Append('WHERE cast(:USERID as varchar(50)) in (c.manager1, c.manager2) or cast(:CanSeeAll as char(1)) = ''y''');
-    Query.SQL.Append('UNION ALL');
-    Query.SQL.Append('SELECT 2 AS T');
-    Query.SQL.Append('FROM family f join clients c on (f.client = c.id)');
-    Query.SQL.Append('WHERE cast(:USERID as varchar(50)) in (c.manager1, c.manager2) or cast(:CanSeeAll as char(1)) = ''y''');
-    Query.ParamByName('USERID').AsString := '1';
-    Query.ParamByName('CanSeeAll').AsString := 'y';
-    Query.Open;
-    Query.Close;
-  finally
-    FreeAndNil(Query);
-  end;
-end;
-
-procedure TZTestCompPostgreSQLBugReport.TestSF460_B;
-var
-  Query: TZQuery;
-begin
-  Query := CreateQuery;
-  try
-    Query.SQL.BeginUpdate;
-    Query.SQL.Append('select X.* from (');
-    Query.SQL.Append('  SELECT cast(1 as integer) AS T');
-    Query.SQL.Append('  FROM clients c');
-    Query.SQL.Append('  WHERE cast(:USERID as varchar(50)) in (c.manager1, c.manager2) or cast(:CanSeeAll as char(1)) = ''y''');
-    Query.SQL.Append('  UNION ALL');
-    Query.SQL.Append('  SELECT cast(2 as integer) AS T');
-    Query.SQL.Append('  FROM family f join clients c on (f.client = c.id)');
-    Query.SQL.Append('  WHERE cast(:USERID as varchar(50)) in (c.manager1, c.manager2) or cast(:CanSeeAll as char(1)) = ''y''');
-    Query.SQL.Append(') as X');
-    Query.SQL.Append('where T >= :MinT or T <= :MaxT');
-    Query.SQL.EndUpdate;
-    Query.ParamByName('USERID').AsString := '1';
-    Query.ParamByName('CanSeeAll').AsString := 'y';
-    Query.ParamByName('MinT').AsInteger := 1;
-    Query.ParamByName('MaxT').AsInteger := 2;
-    Query.Open;
-    Query.Close;
-  finally
-    FreeAndNil(Query);
-  end;
-end;
-
-procedure TZTestCompPostgreSQLBugReport.TestSF478;
-var
-  Query: TZQuery;
-  Temp: String;
-  Separator: String;
-begin
-  {$IFDEF WITH_FORMATSETTINGS}
-  Separator := FormatSettings.DecimalSeparator;
-  {$ELSE}
-  Separator := DecimalSeparator;
-  {$ENDIF}
-
-  try
-    Connection.FormatSettings.DisplayTimeFormatSettings.Format := 'hh:nn:ss.zzz';
-    Connection.FormatSettings.EditTimeFormatSettings.Format := 'hh:nn:ss.zzz';
-    Connection.FormatSettings.DisplayTimeFormatSettings.SecondFractionOption := foRightZerosTrimmed;
-    Connection.Connect;
-    Connection.ExecuteDirect('insert into date_values (d_id, d_time) values (20210307, ''2021-03-07 14:00:00'')');
-    Query := CreateQuery;
-    Query.SQL.Text := 'select d_id, d_time from date_values where d_id = 20210307';
-    Query.Open;
-    Temp := Query.FieldByName('d_time').DisplayText;
-    CheckEquals(Length(Temp), 8, 'No decimal separator is expected since there are no fractions to display. Result is >' + Temp + '<.');
-    Query.Edit;
-    Query.FieldByName('d_time').AsDateTime := EncodeTime(14, 0, 0, 123);
-    Query.Post;
-    Temp := Query.FieldByName('d_time').DisplayText;
-    CheckNotEquals(Pos(Separator , Temp), 0, 'Decimal separator expected in Result but no >' + Separator + '< found in >' + Temp + '<.');
-  finally
-    if Assigned(Query) then
-      FreeAndNil(Query);
-    if Connection.Connected then
-      Connection.ExecuteDirect('delete from date_values where d_id = 20210307');
-    Connection.FormatSettings.DisplayTimeFormatSettings.Format := '';
-    Connection.FormatSettings.EditTimeFormatSettings.Format := '';
-  end;
-end;
-
 
 initialization
   RegisterTest('bugreport',TZTestCompPostgreSQLBugReport.Suite);

@@ -2,8 +2,9 @@ object ZeosProxyDaemon: TZeosProxyDaemon
   OldCreateOrder = False
   OnStart = DataModuleStart
   OnStop = DataModuleStop
-  Height = 359
-  HorizontalOffset = 582
-  VerticalOffset = 176
-  Width = 670
+  Height = 897
+  HorizontalOffset = 1456
+  VerticalOffset = 440
+  Width = 1674
+  PPI = 240
 end

@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -60,11 +60,9 @@ interface
 
 {$IFNDEF ZEOS_DISABLE_MYSQL} //if set we have an empty unit
 uses
-  {$IFDEF MORMOT2}
-  mormot.db.core, mormot.core.datetime, mormot.core.text, mormot.core.base,
-  {$ELSE MORMOT2} {$IFDEF USE_SYNCOMMONS}
+{$IFDEF USE_SYNCOMMONS}
   SynCommons, SynTable,
-  {$ENDIF USE_SYNCOMMONS} {$ENDIF MORMOT2}
+{$ENDIF USE_SYNCOMMONS}
   FmtBCD, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils, Types,
   {$IFNDEF NO_UNIT_CONTNRS}Contnrs,{$ENDIF} ZClasses,
   ZDbcIntfs, ZDbcResultSet, ZDbcResultSetMetadata, ZCompatibility, ZDbcCache,
@@ -77,8 +75,6 @@ type
   private
     FHas_ExtendedColumnInfos: Boolean;
   protected
-    /// <summary>Clears specified column information.</summary>
-    /// <param>"ColumnInfo" a column information object.</param>
     procedure ClearColumn(ColumnInfo: TZColumnInfo); override;
     procedure LoadColumns; override;
   public
@@ -134,19 +130,9 @@ type
       const Connection: IZMySQLConnection; IsOutParamResult: Boolean;
       PMYSQL_STMT: PPMYSQL_STMT; MYSQL_ColumnsBinding: PMYSQL_ColumnsBinding;
       AffectedRows: PInteger; out OpenCursorCallback: TOpenCursorCallback);
+    destructor Destroy; override;
     procedure BeforeClose; override;
     procedure AfterClose; override;
-    /// <summary>Releases all driver handles and set the object in a closed
-    ///  Zombi mode waiting for destruction. Each known supplementary object,
-    ///  supporting this interface, gets called too. This may be a recursive
-    ///  call from parant to childs or vice vera. So finally all resources
-    ///  to the servers are released. This method is triggered by a connecton
-    ///  loss. Don't use it by hand except you know what you are doing.</summary>
-    /// <param>"Sender" the object that did notice the connection lost.</param>
-    /// <param>"AError" a reference to an EZSQLConnectionLost error.
-    ///  You may free and nil the error object so no Error is thrown by the
-    ///  generating method. So we start from the premisse you have your own
-    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable;
       var AError: EZSQLConnectionLost); override;
 
@@ -169,9 +155,9 @@ type
     procedure GetTimeStamp(ColumnIndex: Integer; var Result: TZTimeStamp); reintroduce; overload;
     function GetBlob(ColumnIndex: Integer; LobStreamMode: TZLobStreamMode = lsmRead): IZBlob;
 
-    {$IFDEF WITH_COLUMNS_TO_JSON}
+    {$IFDEF USE_SYNCOMMONS}
     procedure ColumnsToJSON(JSONWriter: TJSONWriter; JSONComposeOptions: TZJSONComposeOptions = [jcoEndJSONObject]);
-    {$ENDIF WITH_COLUMNS_TO_JSON}
+    {$ENDIF USE_SYNCOMMONS}
     //EH: keep that override 4 all descendants: seek_data is dead slow in a forward only mode
     function Next: Boolean; reintroduce;
 
@@ -180,33 +166,13 @@ type
   end;
 
   TZMySQL_Store_ResultSet = class(TZAbstractMySQLResultSet)
-  protected
-    procedure Open; override;
   public
-    /// <summary>Moves the cursor to the given row number in
-    ///  this <c>ResultSet</c> object. If the row number is positive, the cursor
-    ///  moves to the given row number with respect to the beginning of the
-    ///  result set. The first row is row 1, the second is row 2, and so on.
-    ///  If the given row number is negative, the cursor moves to
-    ///  an absolute row position with respect to the end of the result set.
-    ///  For example, calling the method <c>absolute(-1)</c> positions the
-    ///  cursor on the last row; calling the method <c>absolute(-2)</c>
-    ///  moves the cursor to the next-to-last row, and so on. An attempt to
-    ///  position the cursor beyond the first/last row in the result set leaves
-    ///  the cursor before the first row or after the last row.
-    ///  <B>Note:</B> Calling <c>absolute(1)</c> is the same
-    ///  as calling <c>first()</c>. Calling <c>absolute(-1)</c>
-    ///  is the same as calling <c>last()</c>.</summary>
-    /// <param>"Row" the absolute position to be moved.</param>
-    /// <returns><c>true</c> if the cursor is on the result set;<c>false</c>
-    ///  otherwise</returns>
     function MoveAbsolute(Row: Integer): Boolean; override;
+    procedure ResetCursor; override;
     procedure OpenCursor; override;
   end;
 
   TZMySQL_Use_ResultSet = class(TZAbstractMySQLResultSet)
-  protected
-    procedure Open; override;
   public
     procedure ResetCursor; override;
     procedure OpenCursor; override;
@@ -224,11 +190,7 @@ type
     constructor Create(const PlainDriver: TZMySQLPlainDriver; MySQL: PPMySQL;
       MYSQL_STMT: PPMYSQL_STMT; const Statement: IZStatement;
       const Metadata: IZResultSetMetadata);
-    /// <summary>Forms a where clause for UPDATE or DELETE DML statements.</summary>
-    /// <param>"SQLWriter" a TZSQLStringWriter object used for buffered writes</param>
-    /// <param>"OldRowAccessor" an accessor object to old column values.</param>
-    /// <param>"Result" a reference to the Result String the SQLWriter uses
-    ///  for the buffered writes.</param>
+
     procedure FormWhereClause(const SQLWriter: TZSQLStringWriter;
       const OldRowAccessor: TZRowAccessor; var Result: SQLString); override;
     procedure PostUpdates(const Sender: IZCachedResultSet; UpdateType: TZRowUpdateType;
@@ -244,7 +206,7 @@ type
   private
     FPlainDriver: TZMySQLPlainDriver;
     FBind: PMYSQL_aligned_BIND;
-    FStmtHandle: PMYSQL_STMT;
+    FStmtHandle: PPMYSQL_STMT;
     FIndex: Cardinal;
     FReleased: Boolean;
     FLobRow: Integer;
@@ -258,17 +220,6 @@ type
       LobStreamMode: TZLobStreamMode; const OpenLobStreams: TZSortedList;
       CurrentRowAddr: PInteger);
   public //implement IImmediatelyReleasable
-    /// <summary>Releases all driver handles and set the object in a closed
-    ///  Zombi mode waiting for destruction. Each known supplementary object,
-    ///  supporting this interface, gets called too. This may be a recursive
-    ///  call from parant to childs or vice vera. So finally all resources
-    ///  to the servers are released. This method is triggered by a connecton
-    ///  loss. Don't use it by hand except you know what you are doing.</summary>
-    /// <param>"Sender" the object that did notice the connection lost.</param>
-    /// <param>"AError" a reference to an EZSQLConnectionLost error.
-    ///  You may free and nil the error object so no Error is thrown by the
-    ///  generating method. So we start from the premisse you have your own
-    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost);
     function GetConSettings: PZConSettings;
   public //implement IZLob
@@ -315,9 +266,9 @@ type
   { TZMySQLUseResultRowAccessor }
 
   TZMySQLUseResultRowAccessor = class(TZRowAccessor)
-  protected
-    class function MetadataToAccessorType(ColumnInfo: TZColumnInfo;
-      ConSettings: PZConSettings; Var ColumnCodePage: Word): TZSQLType; override;
+  public
+    constructor Create(ColumnsInfo: TObjectList; ConSettings: PZConSettings;
+      const OpenLobStreams: TZSortedList; CachedLobs: WordBool); override;
   end;
 
   { TZMySQLPreparedUseResultRowAccessor }
@@ -390,7 +341,9 @@ end;
   @return SQL type from java.sql.Types
 }
 function TZMySQLResultSetMetadata.GetColumnType(ColumnIndex: Integer): TZSQLType;
-begin
+begin {EH: does anyone know why the LoadColumns was made? Note the column-types are perfect determinable on MySQL}
+  //if not Loaded then
+    // LoadColumns;
   Result := TZColumnInfo(ResultSet.ColumnsInfo[ColumnIndex{$IFNDEF GENERIC_INDEX} - 1{$ENDIF}]).ColumnType;
 end;
 
@@ -436,7 +389,8 @@ var
   I: Integer;
   TableColumns: IZResultSet;
   Connection: IZConnection;
-  IdentifierConverter: IZIdentifierConverter;
+  Driver: IZDriver;
+  IdentifierConvertor: IZIdentifierConvertor;
   Analyser: IZStatementAnalyser;
   Tokenizer: IZTokenizer;
 begin
@@ -444,9 +398,10 @@ begin
   then inherited LoadColumns
   else begin
     Connection := Metadata.GetConnection;
-    Analyser := Connection.GetStatementAnalyser;
-    Tokenizer := Connection.GetTokenizer;
-    IdentifierConverter := Metadata.GetIdentifierConverter;
+    Driver := Connection.GetDriver;
+    Analyser := Driver.GetStatementAnalyser;
+    Tokenizer := Driver.GetTokenizer;
+    IdentifierConvertor := Metadata.GetIdentifierConvertor;
     try
       if Analyser.DefineSelectSchemaFromQuery(Tokenizer, SQL) <> nil then
         for I := 0 to ResultSet.ColumnsInfo.Count - 1 do begin
@@ -454,7 +409,7 @@ begin
           ClearColumn(Current);
           if Current.TableName = '' then
             continue;
-          TableColumns := Metadata.GetColumns(Current.CatalogName, Current.SchemaName, Metadata.AddEscapeCharToWildcards(IdentifierConverter.Quote(Current.TableName, iqTable)),'');
+          TableColumns := Metadata.GetColumns(Current.CatalogName, Current.SchemaName, Metadata.AddEscapeCharToWildcards(IdentifierConvertor.Quote(Current.TableName)),'');
           if TableColumns <> nil then begin
             TableColumns.BeforeFirst;
             while TableColumns.Next do
@@ -465,10 +420,11 @@ begin
           end;
         end;
     finally
+      Driver := nil;
       Connection := nil;
       Analyser := nil;
       Tokenizer := nil;
-      IdentifierConverter := nil;
+      IdentifierConvertor := nil;
     end;
   end;
   Loaded := True;
@@ -476,7 +432,7 @@ end;
 
 { TZAbstractMySQLResultSet }
 
-{$IFDEF WITH_COLUMNS_TO_JSON}
+{$IFDEF USE_SYNCOMMONS}
 procedure TZAbstractMySQLResultSet.ColumnsToJSON(JSONWriter: TJSONWriter;
   JSONComposeOptions: TZJSONComposeOptions);
 var
@@ -535,54 +491,42 @@ begin
           FIELD_TYPE_TIMESTAMP,
           FIELD_TYPE_DATETIME   : begin
                                     if jcoDATETIME_MAGIC in JSONComposeOptions then
-                                      {$IFDEF MORMOT2}
-                                      JSONWriter.AddShorter(JSON_SQLDATE_MAGIC_QUOTE_STR)
-                                      {$ELSE}
                                       JSONWriter.AddNoJSONEscape(@JSON_SQLDATE_MAGIC_QUOTE_VAR,4)
-                                      {$ENDIF}
                                     else if jcoMongoISODate in JSONComposeOptions then
                                       JSONWriter.AddShort('ISODate("')
                                     else JSONWriter.Add('"');
-                                    DateToIso8601PChar(Pointer(FByteBuffer), True, PMYSQL_TIME(Bind^.Buffer)^.Year,
+                                    DateToIso8601PChar(PUTF8Char(FByteBuffer), True, PMYSQL_TIME(Bind^.Buffer)^.Year,
                                       PMYSQL_TIME(Bind^.Buffer)^.Month, PMYSQL_TIME(Bind^.Buffer)^.Day);
                                     MS := ((PMYSQL_TIME(Bind^.Buffer)^.second_part) * Byte(ord(jcoMilliseconds in JSONComposeOptions)) div 1000000);
-                                    TimeToIso8601PChar(Pointer(PAnsiChar(FByteBuffer)+10), True, PMYSQL_TIME(Bind^.Buffer)^.Hour,
+                                    TimeToIso8601PChar(PUTF8Char(FByteBuffer)+10, True, PMYSQL_TIME(Bind^.Buffer)^.Hour,
                                       PMYSQL_TIME(Bind^.Buffer)^.Minute, PMYSQL_TIME(Bind^.Buffer)^.Second, MS, 'T', jcoMilliseconds in JSONComposeOptions);
                                     if (jcoMilliseconds in JSONComposeOptions)
-                                    then JSONWriter.AddNoJSONEscape(Pointer(FByteBuffer),23)
-                                    else JSONWriter.AddNoJSONEscape(Pointer(FByteBuffer),19);
+                                    then JSONWriter.AddNoJSONEscape(PUTF8Char(FByteBuffer),23)
+                                    else JSONWriter.AddNoJSONEscape(PUTF8Char(FByteBuffer),19);
                                     goto FinalizeDT;
                                   end;
           FIELD_TYPE_DATE,
           FIELD_TYPE_NEWDATE    : begin
                                     if jcoDATETIME_MAGIC in JSONComposeOptions then
-                                      {$IFDEF MORMOT2}
-                                      JSONWriter.AddShorter(JSON_SQLDATE_MAGIC_QUOTE_STR)
-                                      {$ELSE}
                                       JSONWriter.AddNoJSONEscape(@JSON_SQLDATE_MAGIC_QUOTE_VAR,4)
-                                      {$ENDIF}
                                     else if jcoMongoISODate in JSONComposeOptions then
                                       JSONWriter.AddShort('ISODate("')
                                     else JSONWriter.Add('"');
-                                    DateToIso8601PChar(Pointer(FByteBuffer), True, PMYSQL_TIME(Bind^.Buffer)^.Year,
+                                    DateToIso8601PChar(PUTF8Char(FByteBuffer), True, PMYSQL_TIME(Bind^.Buffer)^.Year,
                                       PMYSQL_TIME(Bind^.Buffer)^.Month, PMYSQL_TIME(Bind^.Buffer)^.Day);
-                                    JSONWriter.AddNoJSONEscape(Pointer(FByteBuffer),10);
+                                    JSONWriter.AddNoJSONEscape(PUTF8Char(FByteBuffer),10);
                                     goto FinalizeDT;
                                   end;
           FIELD_TYPE_TIME       : begin
                                     if jcoMongoISODate in JSONComposeOptions then
                                       JSONWriter.AddShort('ISODate("0000-00-00')
                                     else if jcoDATETIME_MAGIC in JSONComposeOptions then
-                                      {$IFDEF MORMOT2}
-                                      JSONWriter.AddShorter(JSON_SQLDATE_MAGIC_QUOTE_STR)
-                                      {$ELSE}
                                       JSONWriter.AddNoJSONEscape(@JSON_SQLDATE_MAGIC_QUOTE_VAR,4)
-                                      {$ENDIF}
                                     else JSONWriter.AddShort('"');
                                     MS := (PMYSQL_TIME(Bind^.Buffer)^.second_part) div 1000000;
-                                    TimeToIso8601PChar(Pointer(FByteBuffer), True, PMYSQL_TIME(Bind^.Buffer)^.Hour,
+                                    TimeToIso8601PChar(PUTF8Char(FByteBuffer), True, PMYSQL_TIME(Bind^.Buffer)^.Hour,
                                       PMYSQL_TIME(Bind^.Buffer)^.Minute, PMYSQL_TIME(Bind^.Buffer)^.Second, MS, 'T', jcoMilliseconds in JSONComposeOptions);
-                                    JSONWriter.AddNoJSONEscape(Pointer(FByteBuffer),9+(4*Ord(jcoMilliseconds in JSONComposeOptions)));
+                                    JSONWriter.AddNoJSONEscape(PUTF8Char(FByteBuffer),9+(4*Ord(jcoMilliseconds in JSONComposeOptions)));
                                     goto FinalizeDT;
                                   end;
           FIELD_TYPE_BIT        : if Bind^.Length[0] = 1
@@ -685,11 +629,7 @@ begin
           FIELD_TYPE_TIMESTAMP,
           FIELD_TYPE_DATETIME   : begin
                                     if jcoDATETIME_MAGIC in JSONComposeOptions then
-                                      {$IFDEF MORMOT2}
-                                      JSONWriter.AddShorter(JSON_SQLDATE_MAGIC_QUOTE_STR)
-                                      {$ELSE}
                                       JSONWriter.AddNoJSONEscape(@JSON_SQLDATE_MAGIC_QUOTE_VAR,4)
-                                      {$ENDIF}
                                     else if jcoMongoISODate in JSONComposeOptions then
                                       JSONWriter.AddShort('ISODate("')
                                     else JSONWriter.Add('"');
@@ -699,11 +639,7 @@ begin
           FIELD_TYPE_DATE,
           FIELD_TYPE_NEWDATE    : begin
                                     if jcoDATETIME_MAGIC in JSONComposeOptions then
-                                      {$IFDEF MORMOT2}
-                                      JSONWriter.AddShorter(JSON_SQLDATE_MAGIC_QUOTE_STR)
-                                      {$ELSE}
                                       JSONWriter.AddNoJSONEscape(@JSON_SQLDATE_MAGIC_QUOTE_VAR,4)
-                                      {$ENDIF}
                                     else if jcoMongoISODate in JSONComposeOptions then
                                       JSONWriter.AddShort('ISODate("')
                                     else JSONWriter.Add('"');
@@ -714,11 +650,7 @@ begin
                                     if jcoMongoISODate in JSONComposeOptions then
                                       JSONWriter.AddShort('ISODate("0000-00-00T')
                                     else if jcoDATETIME_MAGIC in JSONComposeOptions then begin
-                                      {$IFDEF MORMOT2}
-                                      JSONWriter.AddShorter(JSON_SQLDATE_MAGIC_QUOTE_STR);
-                                      {$ELSE}
                                       JSONWriter.AddNoJSONEscape(@JSON_SQLDATE_MAGIC_QUOTE_VAR,4);
-                                      {$ENDIF}
                                       JSONWriter.Add('T');
                                     end else JSONWriter.AddShort('"T');
                                     JSONWriter.AddNoJSONEscape(P, FLengthArray^[C]);
@@ -768,7 +700,7 @@ FinalizeDT:                         if jcoMongoISODate in JSONComposeOptions
   end;
   {$IFDEF RangeCheckEnabled} {$R+} {$ENDIF}
 end;
-{$ENDIF WITH_COLUMNS_TO_JSON}
+{$ENDIF USE_SYNCOMMONS}
 
 {**
   Constructs this object, assignes main properties and
@@ -807,8 +739,6 @@ begin
 {  ClientVersion := FPlainDriver.mysql_get_client_version;
   FBindOffsets := GetBindOffsets(FPlainDriver.IsMariaDBDriver, Max(40101, ClientVersion));}
   FIsOutParamResult := IsOutParamResult;
-  if FIsOutParamResult then
-    LastRowNo := 1;
   Open;
   if Assigned(AffectedRows) then
     AffectedRows^ := LastRowNo;
@@ -819,6 +749,12 @@ function TZAbstractMySQLResultSet.CreateMySQLConvertError(ColumnIndex: Integer;
 begin
   Result := EZMySQLConvertError.Create(Format(SErrorConvertionField,
         [TZColumnInfo(ColumnsInfo[ColumnIndex]).ColumnLabel, IntToStr(Ord(DataType))]));
+end;
+
+destructor TZAbstractMySQLResultSet.Destroy;
+begin
+  //ReallocBindBuffer(FColBuffer, FMYSQL_aligned_BINDs, FBindOffsets, FFieldCount, 0, Ord(fBindBufferAllocated));
+  inherited Destroy;
 end;
 
 procedure TZAbstractMySQLResultSet.BeforeClose;
@@ -840,7 +776,7 @@ var
   MySQL_FieldType_Bit_1_IsBoolean: Boolean;
 begin
   FieldOffsets := GetFieldOffsets(FPlainDriver.mysql_get_client_version);
-  MySQL_FieldType_Bit_1_IsBoolean := FMySQLConnection.MySQL_FieldType_Bit_1_IsBoolean;
+  MySQL_FieldType_Bit_1_IsBoolean := (GetStatement.GetConnection as IZMySQLConnection).MySQL_FieldType_Bit_1_IsBoolean;
   if FPMYSQL_STMT^ = nil then begin
     OpenCursor;
     QueryHandle := FQueryHandle;
@@ -890,7 +826,7 @@ begin
     FMYSQL_STMT := FPMYSQL_STMT^;
   if FMYSQL_STMT <> nil then begin
     if not fBindBufferAllocated then begin
-      for I := 0 to ColumnsInfo.Count -1 do begin
+      for I := 0 to Self.ColumnsInfo.Count -1 do begin
         {$R-}
         Bind := @FMYSQL_aligned_BINDs[I];
         {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
@@ -924,19 +860,13 @@ begin
     if fBindBufferAllocated then begin
       Handle := FMYSQL_STMT;
       FMYSQL_STMT := nil;
-      if Handle <> nil then
-        if FPlainDriver.mysql_stmt_free_result(Handle) <> 0 then
-          FMySQLConnection.HandleErrorOrWarning(lcFetchDone, Handle,
-            'mysql_stmt_free_result', IImmediatelyReleasable(FWeakImmediatRelPtr));
       //test if more results are pendding
-      if (Handle <> nil) and not FClosing and (Assigned(FPlainDriver.mysql_stmt_more_results) and (FPlainDriver.mysql_stmt_more_results(FPMYSQL_STMT^) = 1))
+      if (Handle <> nil) and not FClosing and (FIsOutParamResult or ({not FPlainDriver.IsMariaDBDriver and} (Assigned(FPlainDriver.mysql_stmt_more_results) and (FPlainDriver.mysql_stmt_more_results(FPMYSQL_STMT^) = 1))))
       then Close
       else inherited ResetCursor;
     end else begin
       Handle := FQueryHandle;
       FQueryHandle := nil;
-      if Handle <> nil then
-        FPlainDriver.mysql_free_result(Handle);
       if (Handle <> nil) and not FClosing and (FPlainDriver.mysql_more_results(FPMYSQL^) = 1)
       then Close
       else inherited ResetCursor;
@@ -1019,11 +949,7 @@ begin
       Result := True
     else if FFetchStatus = STMT_FETCH_ERROR then
       FMySQLConnection.HandleErrorOrWarning(lcFetch, FMYSQL_STMT,
-        'mysql_stmt_fetch', IImmediatelyReleasable(FWeakImmediatRelPtr))
-    else if fServerCursor then begin
-      FPlainDriver.mysql_stmt_free_result(FMYSQL_STMT);
-      FMYSQL_STMT := nil;
-    end;
+        'mysql_stmt_fetch', IImmediatelyReleasable(FWeakImmediatRelPtr));
   end else begin
     if (FQueryHandle = nil) then begin
       FQueryHandle := FPlainDriver.mysql_store_result(FPMYSQL^);
@@ -1034,13 +960,8 @@ begin
     if FRowHandle <> nil then begin
       Result := True;
       FLengthArray := FPlainDriver.mysql_fetch_lengths(FQueryHandle);
-    end else begin
-      if fServerCursor then begin
-        FPlainDriver.mysql_free_result(FQueryHandle);
-        FQueryHandle := nil;
-      end;
+    end else
       FLengthArray := nil;
-    end;
   end;
   if Result then begin
     RowNo := RowNo + 1;
@@ -1305,8 +1226,8 @@ set_Results:Len := Result - PWideChar(FByteBuffer);
         FIELD_TYPE_BLOB, FIELD_TYPE_GEOMETRY, MYSQL_TYPE_JSON:
             if ColBind.buffer <> nil then begin
               if ColBind^.binary
-              then Ascii7ToUnicodeString(ColBind^.buffer, ColBind^.length[0], FUniTemp)
-              else PRawToUnicode(ColBind^.buffer, ColBind^.length[0], FClientCP, FUniTemp);
+              then FUniTemp := Ascii7ToUnicodeString(ColBind^.buffer, ColBind^.length[0])
+              else FUniTemp := PRawToUnicode(ColBind^.buffer, ColBind^.length[0], FClientCP);
               goto set_from_tmp;
             end else if ColBind^.Length[0] < SizeOf(TByteBuffer) then begin
               ColBind^.buffer_address^ := PAnsiChar(FByteBuffer);
@@ -1321,8 +1242,8 @@ set_Results:Len := Result - PWideChar(FByteBuffer);
                 else FMySQLConnection.HandleErrorOrWarning(lcFetch, FMYSQL_STMT,
                   'mysql_stmt_fetch_column', IImmediatelyReleasable(FWeakImmediatRelPtr));
               if ColBind^.binary
-              then Ascii7ToUnicodeString(PAnsiChar(FByteBuffer), ColBind^.length[0], FUniTemp)
-              else PRawToUnicode(PAnsiChar(FByteBuffer), ColBind^.length[0], FClientCP, FUniTemp);
+              then FUniTemp := Ascii7ToUnicodeString(PAnsiChar(FByteBuffer), ColBind^.length[0])
+              else FUniTemp := PRawToUnicode(PAnsiChar(FByteBuffer), ColBind^.length[0], FClientCP);
               goto set_from_tmp;
             end else begin
               FTempBlob := GetBlob(ColumnIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF});
@@ -1348,8 +1269,8 @@ set_Results:Len := Result - PWideChar(FByteBuffer);
       if (ColBind^.buffer_type_address^ in [ FIELD_TYPE_ENUM, FIELD_TYPE_SET,
           FIELD_TYPE_STRING, FIELD_TYPE_TINY_BLOB, FIELD_TYPE_MEDIUM_BLOB,
           FIELD_TYPE_LONG_BLOB, FIELD_TYPE_BLOB, MYSQL_TYPE_JSON]) and not ColBind^.binary
-      then PRawToUnicode(PMYSQL_ROW(FRowHandle)[ColumnIndex], FLengthArray^[ColumnIndex], FClientCP, FUniTemp)
-      else Ascii7ToUnicodeString(PMYSQL_ROW(FRowHandle)[ColumnIndex], FLengthArray^[ColumnIndex], FUniTemp);
+      then FUniTemp := PRawToUnicode(PMYSQL_ROW(FRowHandle)[ColumnIndex], FLengthArray^[ColumnIndex], FClientCP)
+      else FUniTemp := Ascii7ToUnicodeString(PMYSQL_ROW(FRowHandle)[ColumnIndex], FLengthArray^[ColumnIndex]);
 set_from_tmp:
       Len := Length(FUniTemp);
       if Len <> 0
@@ -2582,6 +2503,33 @@ end;
 
 { TZMySQL_Store_ResultSet }
 
+{**
+  Moves the cursor to the given row number in
+  this <code>ResultSet</code> object.
+
+  <p>If the row number is positive, the cursor moves to
+  the given row number with respect to the
+  beginning of the result set.  The first row is row 1, the second
+  is row 2, and so on.
+
+  <p>If the given row number is negative, the cursor moves to
+  an absolute row position with respect to
+  the end of the result set.  For example, calling the method
+  <code>absolute(-1)</code> positions the
+  cursor on the last row; calling the method <code>absolute(-2)</code>
+  moves the cursor to the next-to-last row, and so on.
+
+  <p>An attempt to position the cursor beyond the first/last row in
+  the result set leaves the cursor before the first row or after
+  the last row.
+
+  <p><B>Note:</B> Calling <code>absolute(1)</code> is the same
+  as calling <code>first()</code>. Calling <code>absolute(-1)</code>
+  is the same as calling <code>last()</code>.
+
+  @return <code>true</code> if the cursor is on the result set;
+    <code>false</code> otherwise
+}
 {$IF defined (RangeCheckEnabled) and defined(WITH_UINT64_C1118_ERROR)}{$R-}{$IFEND}
 function TZMySQL_Store_ResultSet.MoveAbsolute(Row: Integer): Boolean;
   function Seek(const RowIndex: ULongLong): Boolean;
@@ -2626,16 +2574,12 @@ begin
       then Result := Seek(0) //seek back to first position
       else Result := True;   //we're on first pos already
       FFirstRowFetched := RowNo > 0; //indicate the FirstRow is obtained already
-      if (Row = 0) then
       RowNo := 0; //set BeforeFirst state
     end else begin
       RowNo := Row;
-      if ((Row >= 1) and (Row <= LastRowNo)) then
+      if (Row >= 1) and (Row <= LastRowNo) then
         Result := Seek(RowNo - 1)
-      else if ((Row = 1) and FIsOutParamResult and not FFirstRowFetched) then begin
-        Result := Seek(RowNo - 1);
-        LastRowNo := 1;
-      end else begin
+      else begin
         if not fBindBufferAllocated then begin
           FRowHandle := nil;
           FLengthArray := nil;
@@ -2646,12 +2590,6 @@ begin
   end;
 end;
 {$IF defined (RangeCheckEnabled) and defined(WITH_UINT64_C1118_ERROR)}{$R+}{$IFEND}
-
-procedure TZMySQL_Store_ResultSet.Open;
-begin
-  inherited Open;
-  FCursorLocation := rctClient;
-end;
 
 procedure TZMySQL_Store_ResultSet.OpenCursor;
 label jmpLog;
@@ -2675,6 +2613,22 @@ begin
 jmpLog:
     if not LastRowFetchLogged and DriverManager.HasLoggingListener then
       DriverManager.LogMessage(lcFetchDone, Self);
+  end;
+end;
+
+procedure TZMySQL_Store_ResultSet.ResetCursor;
+begin
+  if not Closed then begin
+    if fBindBufferAllocated then begin
+      if Assigned(FMYSQL_STMT) then
+        if FPlainDriver.mysql_stmt_free_result(FMYSQL_STMT) <> 0 then
+          FMySQLConnection.HandleErrorOrWarning(lcFetch, FMYSQL_STMT,
+            'mysql_stmt_free_result', IImmediatelyReleasable(FWeakImmediatRelPtr))
+    end else if FQueryHandle <> nil then begin
+      FPlainDriver.mysql_free_result(FQueryHandle);
+      FQueryHandle := nil;
+    end;
+    inherited ResetCursor;
   end;
 end;
 
@@ -2707,6 +2661,11 @@ begin
     end;
 end;
 
+{**
+  Forms a where clause for UPDATE or DELETE DML statements.
+  @param Columns a collection of key columns.
+  @param OldRowAccessor an accessor object to old column values.
+}
 {$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "OldRowAccessor" not used} {$ENDIF}
 procedure TZMySQLCachedResolver.FormWhereClause(
   const SQLWriter: TZSQLStringWriter;
@@ -2722,7 +2681,7 @@ begin
     if I > 0 then
       SQLWriter.AddText(' AND ', Result);
     S := MetaData.GetColumnName(idx);
-    Tmp := IdentifierConverter.Quote(S, iqColumn);
+    Tmp := IdentifierConvertor.Quote(S);
     SQLWriter.AddText(Tmp, Result);
     if (Metadata.IsNullable(idx) = ntNullable)
     then SQLWriter.AddText('<=>?', Result) //"null safe equals" operator
@@ -2814,7 +2773,7 @@ begin
   then Result := nil
   else begin
     if LobStreamMode <> lsmWrite then begin
-      if (FCurrentRowAddr^ -1 <> FLobRow) then begin
+      if FCurrentRowAddr^ -1 <> FLobRow then begin
         FPlainDriver.mysql_stmt_data_seek(FStmtHandle, FLobRow);
         Status := FPlainDriver.mysql_stmt_fetch(FStmtHandle);
         if Status = STMT_FETCH_ERROR then
@@ -2826,8 +2785,6 @@ begin
     Result := TZMySQLLobStream.Create(Self);
   end;
 {$IF defined (RangeCheckEnabled) and defined(WITH_UINT64_C1118_ERROR)}{$R+}{$IFEND}
-  if (FColumnCodePage <> zCP_Binary) and (CodePage <> FColumnCodePage) then
-    Result := TZCodePageConversionStream.Create(Result, FColumnCodePage, CodePage, FConSettings, FOpenLobStreams);
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
@@ -2864,12 +2821,6 @@ procedure TZMySQL_Use_ResultSet.AfterConstruction;
 begin
   inherited;
   SetType(rtForwardOnly);
-end;
-
-procedure TZMySQL_Use_ResultSet.Open;
-begin
-  inherited Open;
-  FCursorLocation := rctServer;
 end;
 
 procedure TZMySQL_Use_ResultSet.OpenCursor;
@@ -2919,11 +2870,11 @@ begin
     Count := FOwner.FBind.Length[0] - FOffset;
   FOwner.FBind^.buffer_Length_address^ := Count;
   FOwner.FBind^.buffer_address^ := @Buffer;
-  Status := FOwner.FPlainDriver.mysql_stmt_fetch_column(FOwner.FStmtHandle, FOwner.FBind.mysql_bind, FOwner.FIndex, Foffset);
+  Status := FOwner.FPlainDriver.mysql_stmt_fetch_column(FOwner.FStmtHandle^, FOwner.FBind.mysql_bind, FOwner.FIndex, Foffset);
   FOwner.FBind^.buffer_Length_address^ := 0;
   FOwner.FBind^.buffer_address^ := nil;
   if Status = STMT_FETCH_ERROR then
-    FOwner.FMySQLConnection.HandleErrorOrWarning(lcOther, FOwner.FStmtHandle,
+    FOwner.FMySQLConnection.HandleErrorOrWarning(lcOther, FOwner.FStmtHandle^,
       'mysql_stmt_fetch_column', Self);
   Result := Count;
   FOffSet := Foffset + ULong(Count);
@@ -2953,10 +2904,10 @@ begin
   end;
   if FOwner.FLobStreamMode = lsmRead then
     raise CreateWriteOnlyException;
-  Status := FOwner.FPlainDriver.mysql_stmt_send_long_data(FOwner.FStmtHandle, FOwner.FIndex,
+  Status := FOwner.FPlainDriver.mysql_stmt_send_long_data(FOwner.FStmtHandle^, FOwner.FIndex,
     @Buffer, Count);
   if Status = 1 then
-    FOwner.FMySQLConnection.HandleErrorOrWarning(lcOther, FOwner.FStmtHandle,
+    FOwner.FMySQLConnection.HandleErrorOrWarning(lcOther, FOwner.FStmtHandle^,
       'mysql_stmt_send_long_data', Self);
   Result := Count;
   FOffSet := Foffset + ULong(Result);
@@ -2972,18 +2923,33 @@ end;
 
 { TZMySQLUseResultRowAccessor }
 
-{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "ConSettings, ColumnCodepage" not used} {$ENDIF}
-class function TZMySQLUseResultRowAccessor.MetadataToAccessorType(
-  ColumnInfo: TZColumnInfo; ConSettings: PZConSettings; Var ColumnCodePage: Word): TZSQLType;
+constructor TZMySQLUseResultRowAccessor.Create(ColumnsInfo: TObjectList;
+  ConSettings: PZConSettings; const OpenLobStreams: TZSortedList; CachedLobs: WordBool);
+var TempColumns: TObjectList;
+  I: Integer;
+  Current: TZColumnInfo;
 begin
-  Result := ColumnInfo.ColumnType;
-  //EH: MySQL supports streamed data only in realprepared mode
-  //we need cached memory only if we use a server cursor i.e. forward only
-  //in that case we don't need any lob objects, it's dead slow..
-  if Result in [stAsciiStream, stUnicodeStream, stBinaryStream] then
-    Result := TZSQLType(Byte(Result)-3);
+  TempColumns := TObjectList.Create(True);
+  CopyColumnsInfo(ColumnsInfo, TempColumns);
+  for I := 0 to TempColumns.Count -1 do begin
+    Current := TZColumnInfo(TempColumns[i]);
+    //EH: MySQL supports streamed data only in realprepared mode
+    //we need cached memory only if we use a server cursor i.e. forward only
+    //in that case we don't need any lob objects
+    if Current.ColumnType in [stAsciiStream, stUnicodeStream, stBinaryStream] then begin
+      Current.ColumnType := TZSQLType(Byte(Current.ColumnType)-3);
+      Current.Precision := -1;
+    end;
+    if Current.ColumnType = stUnicodeString then
+      Current.ColumnType := stString; // no national chars supported
+    if Current.ColumnType = stString then
+      Current.ColumnCodePage := TZColumnInfo(ColumnsInfo[I]).ColumnCodePage
+    else if Current.ColumnType = stBytes then
+      Current.ColumnCodePage := zCP_Binary;
+  end;
+  inherited Create(TempColumns, ConSettings, OpenLobStreams, CachedLobs);
+  TempColumns.Free;
 end;
-{$IFDEF FPC} {$POP} {$ENDIF}
 
 { TZMySQLPreparedUseResultsCachedResultSet }
 

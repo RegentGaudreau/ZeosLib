@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -182,9 +182,7 @@ begin
   else if ZFastCode.Pos({$IFDEF UNICODE}RawByteString{$ENDIF}('CLOB'), TypeName) > 0 then
     Result := stAsciiStream
   else if ZFastCode.Pos({$IFDEF UNICODE}RawByteString{$ENDIF}('TEXT'), TypeName) > 0 then
-    Result := stAsciiStream
-  else if ZFastCode.Pos({$IFDEF UNICODE}RawByteString{$ENDIF}('GUID'), TypeName) > 0 then
-    Result := stGUID;
+    Result := stAsciiStream;
   if (Result = stInteger) and (Precision <> 0) then
     if Precision <= 2 then
       Result := stByte

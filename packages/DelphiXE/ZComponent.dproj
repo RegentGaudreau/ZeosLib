@@ -9,9 +9,8 @@
 			<Config Condition="'$(Config)'==''">Debug</Config>
 			<Base>True</Base>
 			<Platform>Win32</Platform>
-			<Basis>True</Basis>
 			<AppType>Package</AppType>
-			<FrameworkType>None</FrameworkType>
+			<FrameworkType>VCL</FrameworkType>
 		</PropertyGroup>
 		<PropertyGroup Condition="'$(Config)'=='Basis' or '$(Base)'!=''">
 			<Base>true</Base>
@@ -73,6 +72,7 @@
 				<MainSource>MainSource</MainSource>
 			</DelphiCompile>
 			<DCCReference Include="ZDbc.dcp"/>
+			<DCCReference Include="vcl.dcp"/>
 			<DCCReference Include="..\..\src\component\ZAbstractConnection.pas"/>
 			<DCCReference Include="..\..\src\component\ZAbstractDataset.pas"/>
 			<DCCReference Include="..\..\src\component\ZAbstractRODataset.pas"/>
@@ -80,13 +80,9 @@
 			<DCCReference Include="..\..\src\component\ZConnection.pas"/>
 			<DCCReference Include="..\..\src\component\ZConnectionGroup.pas"/>
 			<DCCReference Include="..\..\src\component\ZDataset.pas"/>
-			<DCCReference Include="..\..\src\component\ZDatasetParam.pas"/>
 			<DCCReference Include="..\..\src\component\ZDatasetUtils.pas"/>
-			<DCCReference Include="..\..\src\component\ZEventListener.pas"/>
-			<DCCReference Include="..\..\src\component\ZFormatSettings.pas"/>
 			<DCCReference Include="..\..\src\component\ZGroupedConnection.pas"/>
 			<DCCReference Include="..\..\src\component\ZIBEventAlerter.pas"/>
-			<DCCReference Include="..\..\src\component\ZMemTable.pas"/>
 			<DCCReference Include="..\..\src\component\ZPgEventAlerter.pas"/>
 			<DCCReference Include="..\..\src\component\ZSequence.pas"/>
 			<DCCReference Include="..\..\src\component\ZSqlMetadata.pas"/>
@@ -95,7 +91,6 @@
 			<DCCReference Include="..\..\src\component\ZSqlStrings.pas"/>
 			<DCCReference Include="..\..\src\component\ZSqlUpdate.pas"/>
 			<DCCReference Include="..\..\src\component\ZStoredProcedure.pas"/>
-			<DCCReference Include="..\..\src\component\ZTransaction"/>
 			<BuildConfiguration Include="Debug">
 				<Key>Cfg_2</Key>
 				<CfgParent>Base</CfgParent>
@@ -140,7 +135,7 @@
 						<VersionInfoKeys Name="LegalTrademarks"/>
 						<VersionInfoKeys Name="OriginalFilename"/>
 						<VersionInfoKeys Name="ProductName"/>
-						<VersionInfoKeys Name="ProductVersion">8.0.0.0</VersionInfoKeys>
+						<VersionInfoKeys Name="ProductVersion">7.3.0.0</VersionInfoKeys>
 						<VersionInfoKeys Name="Comments"/>
 					</VersionInfoKeys>
 					<Source>

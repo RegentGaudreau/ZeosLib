@@ -186,7 +186,6 @@ end;
 procedure TZASATestDbcMetadata.TestMetadataGetColumns;
 var
   Index: Integer;
-  {$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "DataType..." not used} {$ENDIF}
   procedure CheckColumns(Catalog, Schema, TableName, ColumnName: string;
   DataType: SmallInt; TypeName: string; ColumnSize, BufferLength, DecimalDigits,
   Radix, Nullable: Integer; Remarks, ColumnDef: string; SqlDataType,
@@ -213,7 +212,6 @@ var
     CheckEquals(UpperCase(IsNullable), UpperCase(ResultSet.GetStringByName('IS_NULLABLE')));
     Inc(Index);
   end;
-  {$IFDEF FPC} {$POP} {$ENDIF}
 begin
   Index := FirstDbcIndex;
   ResultSet := MD.GetColumns(Catalog, Schema, 'PEOPLE', '');

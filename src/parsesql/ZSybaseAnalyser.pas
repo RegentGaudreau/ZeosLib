@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -55,18 +55,16 @@ interface
 
 {$I ZParseSql.inc}
 
-{$IF defined(ZEOS_DISABLE_DBLIB) and defined(ZEOS_DISABLE_ASA) and
-     defined(ZEOS_DISABLE_SQLANY) and defined(ZEOS_DISABLE_ADO) and
-     defined(ZEOS_DISABLE_OLEDB) and defined(ZEOS_DISABLE_ODBC) and defined(ZEOS_DISABLE_PROXY)}
-  {$DEFINE EMPTY_ZSybaseAnalyser}
-{$IFEND}
+{$IFNDEF ZEOS_DISABLE_DBLIB}
+uses Classes, ZGenericSqlAnalyser;
 
-{$IFNDEF EMPTY_ZSybaseAnalyser}
-uses ZGenericSqlAnalyser;
 type
-  /// <summary>Implements an Sybase statements analyser.</summary>
-  TZSybaseStatementAnalyser = class(TZGenericStatementAnalyser);
-{$ENDIF EMPTY_ZSybaseAnalyser}
+
+  {** Implements an Sybase statements analyser. }
+  TZSybaseStatementAnalyser = class (TZGenericStatementAnalyser)
+  end;
+
+{$ENDIF ZEOS_DISABLE_DBLIB}
 implementation
 
 end.

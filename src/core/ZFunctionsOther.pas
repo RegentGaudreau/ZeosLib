@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -63,45 +63,45 @@ uses
 type
 
   {** Implements a EMPTY function. }
-  TZEmptyFunction = class (TZAbstractFunction, IZFunction)
+  TZEmptyFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a MIN function. }
-  TZMinFunction = class (TZAbstractFunction, IZFunction)
+  TZMinFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a MAX function. }
-  TZMaxFunction = class (TZAbstractFunction, IZFunction)
+  TZMaxFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a SUM function. }
-  TZSumFunction = class (TZAbstractFunction, IZFunction)
+  TZSumFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a IIF function. }
-  TZIIFFunction = class (TZAbstractFunction, IZFunction)
+  TZIIFFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a CASEF function. }
-  TZCASEFFunction = class (TZAbstractFunction, IZFunction)
+  TZCASEFFunction = class (TZAbstractFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
 procedure AddOtherFunctions(Functions : TZFunctionsList);

@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -382,7 +382,7 @@ var
   Metadata: IZDatabaseMetadata;
   ResultSet: IZResultSet;
   Schema, Tablename:String;
-  IdentifierConverter: IZIdentifierConverter;
+  IdentifierConvertor: IZIdentifierConvertor;
   Catalog: string;
   IsTZSqlMetadata: Boolean;
 begin
@@ -390,7 +390,7 @@ begin
   if Assigned(Connection) and Connection.Connected then
   begin
     Metadata := Connection.DbcConnection.GetMetadata;
-    IdentifierConverter := Metadata.GetIdentifierConverter;
+    IdentifierConvertor := Metadata.GetIdentifierConvertor;
     Catalog := Connection.Catalog;
     Schema := '';
 {$IFDEF USE_METADATA}
@@ -419,18 +419,18 @@ begin
         ResultSet := Metadata.GetTables(Catalog, Metadata.AddEscapeCharToWildcards(Schema), '', nil);
         while ResultSet.Next do
           if IsTZSqlMetadata then
-            List.Add(IdentifierConverter.Quote(ResultSet.GetStringByName('TABLE_NAME'), iqTable))
+            List.Add(IdentifierConvertor.Quote(ResultSet.GetStringByName('TABLE_NAME')))
           else begin
-            TableName := IdentifierConverter.Quote(ResultSet.GetStringByName('TABLE_NAME'), iqTable);
+            TableName := IdentifierConvertor.Quote(ResultSet.GetStringByName('TABLE_NAME'));
             if Connection.DbcConnection.GetMetadata.GetDatabaseInfo.SupportsSchemasInTableDefinitions
             then Schema := ResultSet.GetStringByName('TABLE_SCHEM')
             else Schema := '';
             if (Catalog <> '') and Connection.DbcConnection.GetMetadata.GetDatabaseInfo.SupportsCatalogsInTableDefinitions
             then if Schema <> ''
-              then TableName := IdentifierConverter.Quote(Catalog, iqCatalog) + '.'+ IdentifierConverter.Quote(Schema, iqSchema) + '.' + TableName
-              else TableName := IdentifierConverter.Quote(Catalog, iqCatalog) + '.' + TableName
+              then TableName := IdentifierConvertor.Quote(Catalog) + '.'+ IdentifierConvertor.Quote(Schema) + '.' + TableName
+              else TableName := IdentifierConvertor.Quote(Catalog) + '.' + TableName
             else if (Schema <> '') then
-              TableName := IdentifierConverter.Quote(Schema, iqSchema) + '.' + TableName;
+              TableName := IdentifierConvertor.Quote(Schema) + '.' + TableName;
             List.Add(TableName);
           end;
       finally
@@ -450,7 +450,7 @@ procedure TZProcedureNamePropertyEditor.GetValueList(List: TStrings);
 var
   Connection: TZAbstractConnection;
   Metadata: IZDatabaseMetadata;
-  IdentifierConverter: IZIdentifierConverter;
+  IdentifierConvertor: IZIdentifierConvertor;
   ResultSet: IZResultSet;
   Catalog, Schema: string;
   ProcedureName: string;
@@ -479,7 +479,7 @@ begin
   if Assigned(Connection) and Connection.Connected then
   begin
     Metadata := Connection.DbcConnection.GetMetadata;
-    IdentifierConverter := Metadata.GetIdentifierConverter;
+    IdentifierConvertor := Metadata.GetIdentifierConvertor;
     Catalog := Connection.Catalog;
     Schema := '';
 {$IFDEF USE_METADATA}
@@ -514,7 +514,7 @@ begin
             if not ( StartsWith(ProcedureName, MetaData.GetDatabaseInfo.GetIdentifierQuoteString) or
                      EndsWith(ProcedureName, MetaData.GetDatabaseInfo.GetIdentifierQuoteString) or
                      (Pos('.', ProcedureName) > 0) ) then
-              ProcedureName := IdentifierConverter.Quote(ProcedureName, iqStoredProcedure);
+              ProcedureName := IdentifierConvertor.Quote(ProcedureName);
           if IsTZSqlMetadata then
             List.Add(ProcedureName)
           else begin
@@ -523,10 +523,10 @@ begin
             else Schema := '';
             if (Catalog <> '') and Metadata.GetDatabaseInfo.SupportsCatalogsInProcedureCalls
             then if Schema <> ''
-              then ProcedureName := IdentifierConverter.Quote(Catalog, iqCatalog) +'.'+ IdentifierConverter.Quote(Schema, iqSchema) + '.' + ProcedureName
-              else ProcedureName := IdentifierConverter.Quote(Catalog, iqCatalog) +'.'+ ProcedureName
+              then ProcedureName := IdentifierConvertor.Quote(Catalog) +'.'+ IdentifierConvertor.Quote(Schema) + '.' + ProcedureName
+              else ProcedureName := IdentifierConvertor.Quote(Catalog) +'.'+ ProcedureName
             else if Schema <> '' then
-              ProcedureName := IdentifierConverter.Quote(Schema, iqSchema) + '.' + ProcedureName;
+              ProcedureName := IdentifierConvertor.Quote(Schema) + '.' + ProcedureName;
             List.Add(ProcedureName);
           end;
         end;

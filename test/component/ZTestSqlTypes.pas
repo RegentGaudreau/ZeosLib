@@ -103,7 +103,6 @@ end;
 {**
   Runs a test for Date, Time and DateTime SQL types.
 }
-{$IFDEF FPC}{$PUSH} {$WARN 5057 off : Local variable "TS" does not seem to be initialized}{$ENDIF}
 procedure TZTestSQLTypesCase.TestDateTypes;
 var
   NowDate: TDateTime;
@@ -224,7 +223,6 @@ begin
   Query.ExecSQL;
   CheckEquals(1, Query.RowsAffected);
 end;
-{$IFDEF FPC}{$POP}{$ENDIF}
 
 initialization
   RegisterTest('component',TZTestSQLTypesCase.Suite);

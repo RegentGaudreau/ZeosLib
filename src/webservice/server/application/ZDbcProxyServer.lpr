@@ -1,54 +1,3 @@
-{*********************************************************}
-{                                                         }
-{                 Zeos Database Objects                   }
-{                WebService Proxy Server                  }
-{                                                         }
-{         Originally written by Jan Baumgarten            }
-{                                                         }
-{*********************************************************}
-
-{@********************************************************}
-{    Copyright (c) 1999-2020 Zeos Development Group       }
-{                                                         }
-{ License Agreement:                                      }
-{                                                         }
-{ This library is distributed in the hope that it will be }
-{ useful, but WITHOUT ANY WARRANTY; without even the      }
-{ implied warranty of MERCHANTABILITY or FITNESS FOR      }
-{ A PARTICULAR PURPOSE.  See the GNU Lesser General       }
-{ Public License for more details.                        }
-{                                                         }
-{ The source code of the ZEOS Libraries and packages are  }
-{ distributed under the Library GNU General Public        }
-{ License (see the file COPYING / COPYING.ZEOS)           }
-{ with the following  modification:                       }
-{ As a special exception, the copyright holders of this   }
-{ library give you permission to link this library with   }
-{ independent modules to produce an executable,           }
-{ regardless of the license terms of these independent    }
-{ modules, and to copy and distribute the resulting       }
-{ executable under terms of your choice, provided that    }
-{ you also meet, for each linked independent module,      }
-{ the terms and conditions of the license of that module. }
-{ An independent module is a module which is not derived  }
-{ from or based on this library. If you modify this       }
-{ library, you may extend this exception to your version  }
-{ of the library, but you are not obligated to do so.     }
-{ If you do not wish to do so, delete this exception      }
-{ statement from your version.                            }
-{                                                         }
-{                                                         }
-{ The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
-{   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
-{   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
-{                                                         }
-{   http://www.sourceforge.net/projects/zeoslib.          }
-{                                                         }
-{                                                         }
-{                                 Zeos Development Group. }
-{********************************************************@}
-
 program ZDbcProxyServer;
 
 {$mode delphi}{$H+}
@@ -67,7 +16,7 @@ uses
   {synapse}
   {local}zeosproxy, zeosproxy_binder, zeosproxy_imp, DbcProxyUtils,
   DbcProxyConnectionManager, DbcProxyConfigManager, ZDbcProxyManagement,
-  ZDbcInterbase6, ZDbcPostgreSql, dbcproxycleanupthread, dbcproxysecuritymodule;
+  ZDbcInterbase6, ZDbcPostgreSql, dbcproxycleanupthread;
 
 type
 
@@ -95,12 +44,11 @@ var
   ErrorMsg: String;
   AppObject : TwstListener;
   configFile: String;
-  CleanupThread: TDbcProxyCleanupThread;
 begin
   {$IFDEF LINUX}
   configFile := '/etc/zeosproxy.ini';
   {$ELSE}
-  configFile := ExtractFilePath(ParamStr(0)) + 'zeosproxy.ini';
+  configFile := ExtractFilePath(ParamStr(0)) + 'ZDbcProxy.ini';
   {$ENDIF}
 
   // quick check parameters
@@ -123,8 +71,6 @@ begin
   ConnectionManager := TDbcProxyConnectionManager.Create;
   ConfigManager := TDbcProxyConfigManager.Create;
   ConfigManager.LoadConfigInfo(configFile);
-  CleanupThread := TDbcProxyCleanupThread.Create(ConnectionManager, ConfigManager);
-  CleanupThread.Start;
 
   //Server_service_RegisterBinaryFormat();
   Server_service_RegisterSoapFormat();
@@ -132,11 +78,11 @@ begin
 
   RegisterZeosProxyImplementationFactory();
   Server_service_RegisterZeosProxyService();
-  AppObject := TwstFPHttpListener.Create(ConfigManager.IPAddress, ConfigManager.ListeningPort);
+  AppObject := TwstFPHttpListener.Create('0.0.0.0');
   try
-    WriteLn('Zeos Proxy Server listening at:');
+    WriteLn('"Web Service Toolkit" HTTP Server sample listening at:');
     WriteLn('');
-    WriteLn('http://' + ConfigManager.IPAddress+ ':'+ IntToStr(ConfigManager.ListeningPort)+ '/');
+    WriteLn('http://0.0.0.0:8000/');
     WriteLn('');
     WriteLn('Press enter to quit.');
     (AppObject as  TwstFPHttpListener).Options := [loExecuteInThread];
@@ -148,12 +94,6 @@ begin
     FreeAndNil(AppObject);
   end;
 
-  if Assigned(CleanupThread) then begin
-    CleanupThread.Terminate;
-    CleanupThread.WaitFor;
-  end;
-  if Assigned(ConfigManager) then
-    FreeAndNil(ConfigManager);
   if Assigned(ConnectionManager) then
     FreeAndNil(ConnectionManager);
 

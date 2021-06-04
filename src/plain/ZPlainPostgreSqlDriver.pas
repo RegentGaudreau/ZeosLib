@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -57,7 +57,7 @@ interface
 
 {$IFNDEF ZEOS_DISABLE_POSTGRESQL}
 
-uses ZCompatibility, ZPlainDriver;
+uses {$IFDEF OLDFPC}ZClasses, {$ENDIF}ZCompatibility, ZPlainDriver;
 
 const
   WINDOWS_DLL_LOCATION   = 'libpq.dll';
@@ -677,8 +677,8 @@ type
     PQoptions       : function(conn: TPGconn): PAnsiChar; cdecl;
     PQstatus        : function(conn: TPGconn): TZPostgreSQLConnectStatusType; cdecl;
   //TBD  PGTransactionStatusType PQtransactionStatus(const TPGconn *conn);
-    PQparameterStatus: function(conn: TPGconn; paramName: PAnsiChar): PAnsiChar; cdecl;
-    PQprotocolVersion: function(conn: TPGconn): Integer; cdecl;
+  //15022006 FirmOS: omitting const char *PQparameterStatus(const TPGconn *conn, const char *paramName);
+  //15022006 FirmOS: omitting  PQprotocolVersion
     PQserverVersion : function(conn: TPGconn): Integer; cdecl;
     PQerrorMessage  : function(conn: TPGconn): PAnsiChar; cdecl;
     PQsocket        : function(conn: TPGconn): Integer; cdecl;
@@ -726,13 +726,6 @@ type
     PQsetnonblocking : function(conn: TPGconn; arg: Integer): Integer; cdecl;
 
     PQnotifies      : function(conn: TPGconn): PZPostgreSQLNotify; cdecl;
-    /// <summary>From Postgre dcoumentation:
-    ///  Returns 1 if a command is busy, that is, PQgetResult would
-    ///  block waiting for input. A 0 return indicates that PQgetResult can be
-    ///  called with assurance of not blocking.</summary>
-    /// <remarks>PQisBusy will not itself attempt to read data from the server;
-    ///  therefore PQconsumeInput must be invoked first, or the busy state will
-    ///  never end.</remarks>
     PQisBusy        : function(conn: TPGconn): Integer; cdecl;
     PQconsumeInput  : function(conn: TPGconn): Integer; cdecl;
     PQgetCancel     : function(conn: TPGconn): PGcancel; cdecl;
@@ -905,8 +898,6 @@ begin
     @PQtty          := GetAddress('PQtty');
     @PQoptions      := GetAddress('PQoptions');
     @PQstatus       := GetAddress('PQstatus');
-    @PQparameterStatus := GetAddress('PQparameterStatus');
-    @PQprotocolVersion := GetAddress('PQprotocolVersion');
     @PQserverVersion:= GetAddress('PQserverVersion');
     @PQerrorMessage := GetAddress('PQerrorMessage');
     @PQsocket       := GetAddress('PQsocket');

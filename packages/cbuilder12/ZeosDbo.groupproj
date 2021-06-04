@@ -18,9 +18,6 @@
 			<Projects Include="ZComponent.cbproj">
 				<Dependencies/>
 			</Projects>
-			<Projects Include="ZComponentDesign.cbproj">
-				<Dependencies/>
-			</Projects>
 		</ItemGroup>
 		<ProjectExtensions>
 			<Borland.Personality>Default.Personality.12</Borland.Personality>
@@ -74,23 +71,14 @@
 		<Target Name="ZComponent:Make">
 			<MSBuild Targets="Make" Projects="ZComponent.cbproj"/>
 		</Target>
-		<Target Name="ZComponentDesign">
-			<MSBuild Projects="ZComponentDesign.cbproj"/>
-		</Target>
-		<Target Name="ZComponentDesign:Clean">
-			<MSBuild Targets="Clean" Projects="ZComponentDesign.cbproj"/>
-		</Target>
-		<Target Name="ZComponentDesign:Make">
-			<MSBuild Targets="Make" Projects="ZComponentDesign.cbproj"/>
-		</Target>
 		<Target Name="Build">
-			<CallTarget Targets="ZCore;ZParseSql;ZPlain;ZDbc;ZComponent;ZComponentDesign"/>
+			<CallTarget Targets="ZCore;ZParseSql;ZPlain;ZDbc;ZComponent"/>
 		</Target>
 		<Target Name="Clean">
-			<CallTarget Targets="ZCore:Clean;ZParseSql:Clean;ZPlain:Clean;ZDbc:Clean;ZComponent:Clean;ZComponentDesign:Clean"/>
+			<CallTarget Targets="ZCore:Clean;ZParseSql:Clean;ZPlain:Clean;ZDbc:Clean;ZComponent:Clean"/>
 		</Target>
 		<Target Name="Make">
-			<CallTarget Targets="ZCore:Make;ZParseSql:Make;ZPlain:Make;ZDbc:Make;ZComponent:Make;ZComponentDesign:Make"/>
+			<CallTarget Targets="ZCore:Make;ZParseSql:Make;ZPlain:Make;ZDbc:Make;ZComponent:Make"/>
 		</Target>
 		<Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
 	</Project>

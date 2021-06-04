@@ -55,17 +55,17 @@ interface
 
 {$I ZDbc.inc}
 
-{$IFDEF ENABLE_PROXY} //if set we have an empty unit
+{$IFNDEF ZEOS_DISABLE_PROXY} //if set we have an empty unit
 
 function XMLEncode(Input: String): String;
 
-{$ENDIF ENABLE_PROXY} //if set we have an empty unit
+{$ENDIF ZEOS_DISABLE_PROXY} //if set we have an empty unit
 
 implementation
 
 {$I ZDbc.inc}
 
-{$IFDEF ENABLE_PROXY} //if set we have an empty unit
+{$IFNDEF ZEOS_DISABLE_PROXY} //if set we have an empty unit
 
 uses SysUtils;
 
@@ -97,6 +97,6 @@ begin
   if Position <= Length(Input) then Result := Result + Copy(Input, Position, Length(Input));
 end;
 
-{$ENDIF ENABLE_PROXY} //if set we have an empty unit
+{$ENDIF ZEOS_DISABLE_PROXY} //if set we have an empty unit
 
 end.

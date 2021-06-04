@@ -1,7 +1,7 @@
 {*********************************************************}
 {                                                         }
 {                 Zeos Database Objects                   }
-{           ODBC Database Connectivity Classes            }
+{           ODBC Database Connectivity Classes           }
 {                                                         }
 {            Originally written by EgonHugeist            }
 {                                                         }
@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -57,11 +57,9 @@ interface
 
 {$IFNDEF ZEOS_DISABLE_ODBC} //if set we have an empty unit
 uses
-  {$IFDEF MORMOT2}
-  mormot.db.core, mormot.core.datetime, mormot.core.text, mormot.core.base,
-  {$ELSE MORMOT2} {$IFDEF USE_SYNCOMMONS}
+{$IFDEF USE_SYNCOMMONS}
   SynCommons, SynTable,
-  {$ENDIF USE_SYNCOMMONS} {$ENDIF MORMOT2}
+{$ENDIF USE_SYNCOMMONS}
   {$IFDEF WITH_TOBJECTLIST_REQUIRES_SYSTEM_TYPES}
   System.Types{$IFNDEF NO_UNIT_CONTNRS},Contnrs{$ENDIF}
   {$ELSE}
@@ -71,20 +69,14 @@ uses
   Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils, FmtBCD,
   ZSysUtils, ZDbcIntfs, ZClasses, ZDbcCachedResultSet, ZDbcCache,
   ZCompatibility, ZDbcResultSet, ZFastCode, ZDbcResultsetMetadata,
-  ZPlainODBCDriver, ZDbcODBCCon, ZDbcODBCUtils, ZDbcStatement;
+  ZPlainODBCDriver, ZDbcODBCCon, ZDbcODBCUtils;
 
 type
-  /// <author>EgonHugeist</author>
-  /// <summary>implements a ODBC specific resultset metadata object</summary>
+  { eh: improve missing meta informations of SQLColumns}
   TZODBCResultSetMetadata = class(TZAbstractResultSetMetadata)
   protected
-    /// <summary>Clears specified column information.</summary>
-    /// <param>"ColumnInfo" a column information object.</param>
     procedure ClearColumn(ColumnInfo: TZColumnInfo); override;
   end;
-
-  /// <author>EgonHugeist</author>
-  /// <summary>implements a ODBC specific columninfo object</summary>
   TZODBCColumnInfo = class(TZColumnInfo)
   private
     fODBC_CType: SQLSMALLINT;
@@ -101,6 +93,7 @@ type
   end;
 
   { Interbase Error Class}
+  EZODBCConvertError = class(EZSQLException);
 
   TAbstractODBCResultSet = Class(TZAbstractReadOnlyResultSet)
   private
@@ -121,7 +114,7 @@ type
     FTempLob: IZBlob;
     FByteBuffer: PByteBuffer;
     procedure LoadUnBoundColumns;
-    function CreateODBCConvertError(ColumnIndex: Integer; DataType: TZSQLType): EZSQLException;
+    function CreateODBCConvertError(ColumnIndex: Integer; DataType: Word): EZODBCConvertError;
   protected
     procedure CheckStmtError(RETCODE: SQLRETURN);
   public
@@ -150,14 +143,14 @@ type
     procedure GetTime(ColumnIndex: Integer; var Result: TZTime); reintroduce; overload;
     procedure GetTimestamp(ColumnIndex: Integer; var Result: TZTimeStamp); reintroduce; overload;
     function GetBlob(ColumnIndex: Integer; LobStreamMode: TZLobStreamMode = lsmRead): IZBlob;
-    {$IFDEF WITH_COLUMNS_TO_JSON}
+    {$IFDEF USE_SYNCOMMONS}
     procedure ColumnsToJSON(JSONWriter: TJSONWriter; JSONComposeOptions: TZJSONComposeOptions);
-    {$ENDIF WITH_COLUMNS_TO_JSON}
+    {$ENDIF USE_SYNCOMMONS}
   End;
 
   TAbstractColumnODBCResultSet = class(TAbstractODBCResultSet, IZResultSet)
   protected
-    procedure ColStrAttribute(ColumnNumber, FieldIdentifier: SQLUSMALLINT; const Buf: TByteDynArray; var Result: String); virtual; abstract;
+    function ColStrAttribute(ColumnNumber, FieldIdentifier: SQLUSMALLINT; const Buf: TByteDynArray): String; virtual; abstract;
     function ColNumAttribute(ColumnNumber, FieldIdentifier: SQLUSMALLINT): SQLLEN; virtual; abstract;
     procedure DescribeColumn(ColumnNumber: SQLUSMALLINT; const Buf: TByteDynArray; var ColumnInfo: TZODBCColumnInfo); virtual; abstract;
     procedure Open; override;
@@ -176,7 +169,7 @@ type
   private
     fPlainW: TODBC3UnicodePlainDriver;
   protected
-    procedure ColStrAttribute(ColumnNumber, FieldIdentifier: SQLUSMALLINT; const Buf: TByteDynArray; var Result: String); override;
+    function ColStrAttribute(ColumnNumber, FieldIdentifier: SQLUSMALLINT; const Buf: TByteDynArray): String; override;
     function ColNumAttribute(ColumnNumber, FieldIdentifier: SQLUSMALLINT): SQLLEN; override;
     procedure DescribeColumn(ColumnNumber: SQLUSMALLINT; const Buf: TByteDynArray; var ColumnInfo: TZODBCColumnInfo); override;
   public
@@ -189,7 +182,7 @@ type
   private
     fPlainA: TODBC3RawPlainDriver;
   protected
-    procedure ColStrAttribute(ColumnNumber, FieldIdentifier: SQLUSMALLINT; const Buf: TByteDynArray; var Result: String); override;
+    function ColStrAttribute(ColumnNumber, FieldIdentifier: SQLUSMALLINT; const Buf: TByteDynArray): String; override;
     function ColNumAttribute(ColumnNumber, FieldIdentifier: SQLUSMALLINT): SQLLEN; override;
     procedure DescribeColumn(ColumnNumber: SQLUSMALLINT; const Buf: TByteDynArray; var ColumnInfo: TZODBCColumnInfo); override;
   public
@@ -227,12 +220,9 @@ type
   { TZODBCRowAccessorW }
 
   TZODBCRowAccessorW = class(TZRowAccessor)
-  protected
-    class function MetadataToAccessorType(ColumnInfo: TZColumnInfo;
-      ConSettings: PZConSettings; Var ColumnCodePage: Word): TZSQLType; override;
   public
     constructor Create(ColumnsInfo: TObjectList; ConSettings: PZConSettings;
-      const OpenLobStreams: TZSortedList; LobCacheMode: TLobCacheMode); override;
+      const OpenLobStreams: TZSortedList; CachedLobs: WordBool); override;
   end;
 
   TZODBCachedResultSetA = class(TZCachedResultSet)
@@ -243,12 +233,9 @@ type
   { TZODBCRowAccessorW }
 
   TZODBCRowAccessorA = class(TZRowAccessor)
-  protected
-    class function MetadataToAccessorType(ColumnInfo: TZColumnInfo;
-      ConSettings: PZConSettings; Var ColumnCodePage: Word): TZSQLType; override;
   public
     constructor Create(ColumnsInfo: TObjectList; ConSettings: PZConSettings;
-      const OpenLobStreams: TZSortedList; LobCacheMode: TLobCacheMode); override;
+      const OpenLobStreams: TZSortedList; CachedLobs: WordBool); override;
   end;
 
   TZODBCOutParamColumnInfo = class(TZODBCColumnInfo)
@@ -257,37 +244,15 @@ type
   end;
 
   TZParamODBCResultSet = class(TAbstractODBCResultSet, IZResultSet)
+  private
+    FParamCount: Integer;
+    FODBCParamBindArray: PZODBCParamBindArray;
+  protected
+    procedure Open; override;
   public
     constructor Create(const Statement: IZStatement; const SQL: String;
-       BindList: TZBindList);
-    /// <summary>Moves the cursor down one row from its current position. A
-    ///  <c>ResultSet</c> cursor is initially positioned before the first row;
-    ///  the first call to the method <c>next</c> makes the first row the
-    ///  current row; the second call makes the second row the current row, and
-    ///  so on. If an input stream is open for the current row, a call to the
-    ///  method <c>next</c> will implicitly close it. A <c>ResultSet</c>
-    ///  object's warning chain is cleared when a new row is read.
-    /// <returns><c>true</c> if the new current row is valid; <c>false</c> if
-    ///  there are no more rows</returns>
+       ODBCParamBindArray: PZODBCParamBindArray; ParamCount: Integer);
     function Next: Boolean; reintroduce;
-    /// <summary>Moves the cursor to the given row number in
-    ///  this <c>ResultSet</c> object. If the row number is positive, the cursor
-    ///  moves to the given row number with respect to the beginning of the
-    ///  result set. The first row is row 1, the second is row 2, and so on.
-    ///  If the given row number is negative, the cursor moves to
-    ///  an absolute row position with respect to the end of the result set.
-    ///  For example, calling the method <c>absolute(-1)</c> positions the
-    ///  cursor on the last row; calling the method <c>absolute(-2)</c>
-    ///  moves the cursor to the next-to-last row, and so on. An attempt to
-    ///  position the cursor beyond the first/last row in the result set leaves
-    ///  the cursor before the first row or after the last row.
-    ///  <B>Note:</B> Calling <c>absolute(1)</c> is the same
-    ///  as calling <c>first()</c>. Calling <c>absolute(-1)</c>
-    ///  is the same as calling <c>last()</c>.</summary>
-    /// <param>"Row" the absolute position to be moved.</param>
-    /// <returns><c>true</c> if the cursor is on the result set;<c>false</c>
-    ///  otherwise</returns>
-    function MoveAbsolute(Row: Integer): Boolean; override;
   end;
 
 const
@@ -299,7 +264,7 @@ implementation
 
 uses Math,
   {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings, {$ENDIF} //need for inlined FloatToRaw
-  ZMessages, ZEncoding, ZDbcProperties, TypInfo,
+  ZMessages, ZEncoding, ZDbcProperties,
   ZDbcUtils, ZDbcLogging;
 
 { TAbstractODBCResultSet }
@@ -316,7 +281,7 @@ begin
     HandleError;
 end;
 
-{$IFDEF WITH_COLUMNS_TO_JSON}
+{$IFDEF USE_SYNCOMMONS}
 procedure TAbstractODBCResultSet.ColumnsToJSON(JSONWriter: TJSONWriter;
   JSONComposeOptions: TZJSONComposeOptions);
 var C, H, I: Integer;
@@ -355,7 +320,7 @@ begin
         stULong:      JSONWriter.AddQ(PUInt64(fColDataPtr)^);
         stLong:       JSONWriter.Add(PInt64(fColDataPtr)^);
         stFloat:      JSONWriter.AddSingle(PSingle(fColDataPtr)^);
-        stCurrency:   JSONWriter.{$IFDEF MORMOT2}AddCurr{$ELSE}AddCurr64{$ENDIF}(ODBCNumeric2Curr(fColDataPtr));
+        stCurrency:   JSONWriter.AddCurr64(ODBCNumeric2Curr(fColDataPtr));
         stBigDecimal: begin
                         L := SQL_MAX_NUMERIC_LEN;
                         SQLNumeric2Raw(fColDataPtr, PAnsiChar(fByteBuffer), L);
@@ -364,33 +329,25 @@ begin
         stDouble: JSONWriter.AddDouble(PDouble(fColDataPtr)^);
         stBytes:      JSONWriter.WrBase64(fColDataPtr,fStrLen_or_Ind,True);
         stGUID:       begin
-                        {$IFDEF MORMOT2}
-                        JSONWriter.Add(PGUID(fColDataPtr), '"');
-                        {$ELSE}
                         JSONWriter.Add('"');
                         JSONWriter.Add(PGUID(fColDataPtr)^);
                         JSONWriter.Add('"');
-                        {$ENDIF}
                       end;
         stTime:       begin
                         if jcoMongoISODate in JSONComposeOptions then
                           JSONWriter.AddShort('ISODate("0000-00-00')
                         else if jcoDATETIME_MAGIC in JSONComposeOptions then begin
-                          {$IFDEF MORMOT2}
-                          JSONWriter.AddShorter(JSON_SQLDATE_MAGIC_QUOTE_STR)
-                          {$ELSE}
                           JSONWriter.AddNoJSONEscape(@JSON_SQLDATE_MAGIC_QUOTE_VAR,4)
-                          {$ENDIF}
                         end else
                           JSONWriter.Add('"');
                         if (ODBC_CType = SQL_C_BINARY) or (ODBC_CType = SQL_C_SS_TIME2) then
-                          TimeToIso8601PChar(Pointer(FByteBuffer), True, PSQL_SS_TIME2_STRUCT(fColDataPtr)^.hour,
+                          TimeToIso8601PChar(PUTF8Char(FByteBuffer), True, PSQL_SS_TIME2_STRUCT(fColDataPtr)^.hour,
                             PSQL_SS_TIME2_STRUCT(fColDataPtr)^.minute, PSQL_SS_TIME2_STRUCT(fColDataPtr)^.second,
                             PSQL_SS_TIME2_STRUCT(fColDataPtr)^.fraction div 1000000, 'T', jcoMilliseconds in JSONComposeOptions)
                         else
-                          TimeToIso8601PChar(Pointer(FByteBuffer), True, PSQL_TIME_STRUCT(fColDataPtr)^.hour,
+                          TimeToIso8601PChar(PUTF8Char(FByteBuffer), True, PSQL_TIME_STRUCT(fColDataPtr)^.hour,
                             PSQL_TIME_STRUCT(fColDataPtr)^.minute, PSQL_TIME_STRUCT(fColDataPtr)^.second, 0, 'T', jcoMilliseconds in JSONComposeOptions);
-                        JSONWriter.AddNoJSONEscape(Pointer(FByteBuffer),9+(4*Ord(jcoMilliseconds in JSONComposeOptions)));
+                        JSONWriter.AddNoJSONEscape(PUTF8Char(FByteBuffer),9+(4*Ord(jcoMilliseconds in JSONComposeOptions)));
                         if jcoMongoISODate in JSONComposeOptions
                         then JSONWriter.AddShort('Z)"')
                         else JSONWriter.Add('"');
@@ -399,18 +356,14 @@ begin
                         if jcoMongoISODate in JSONComposeOptions then
                           JSONWriter.AddShort('ISODate("')
                         else if jcoDATETIME_MAGIC in JSONComposeOptions then
-                          {$IFDEF MORMOT2}
-                          JSONWriter.AddShorter(JSON_SQLDATE_MAGIC_QUOTE_STR)
-                          {$ELSE}
                           JSONWriter.AddNoJSONEscape(@JSON_SQLDATE_MAGIC_QUOTE_VAR,4)
-                          {$ENDIF}
                         else
                           JSONWriter.Add('"');
                         if PSQL_DATE_STRUCT(fColDataPtr)^.year < 0 then
                           JSONWriter.Add('-');
-                        DateToIso8601PChar(Pointer(FByteBuffer), True, Abs(PSQL_DATE_STRUCT(fColDataPtr)^.year),
+                        DateToIso8601PChar(PUTF8Char(FByteBuffer), True, Abs(PSQL_DATE_STRUCT(fColDataPtr)^.year),
                           PSQL_DATE_STRUCT(fColDataPtr)^.month, PSQL_DATE_STRUCT(fColDataPtr)^.day);
-                        JSONWriter.AddNoJSONEscape(Pointer(FByteBuffer),10);
+                        JSONWriter.AddNoJSONEscape(PUTF8Char(FByteBuffer),10);
                         if jcoMongoISODate in JSONComposeOptions
                         then JSONWriter.AddShort('Z")')
                         else JSONWriter.Add('"');
@@ -419,20 +372,16 @@ begin
                         if jcoMongoISODate in JSONComposeOptions then
                           JSONWriter.AddShort('ISODate("')
                         else if jcoDATETIME_MAGIC in JSONComposeOptions then
-                          {$IFDEF MORMOT2}
-                          JSONWriter.AddShorter(JSON_SQLDATE_MAGIC_QUOTE_STR)
-                          {$ELSE}
                           JSONWriter.AddNoJSONEscape(@JSON_SQLDATE_MAGIC_QUOTE_VAR,4)
-                          {$ENDIF}
                         else
                           JSONWriter.Add('"');
                         if PSQL_TIMESTAMP_STRUCT(fColDataPtr)^.year < 0 then
                           JSONWriter.Add('-');
-                        DateToIso8601PChar(Pointer(FByteBuffer), True, Abs(PSQL_TIMESTAMP_STRUCT(fColDataPtr)^.year),
+                        DateToIso8601PChar(PUTF8Char(FByteBuffer), True, Abs(PSQL_TIMESTAMP_STRUCT(fColDataPtr)^.year),
                           PSQL_TIMESTAMP_STRUCT(fColDataPtr)^.month, PSQL_TIMESTAMP_STRUCT(fColDataPtr)^.day);
-                        TimeToIso8601PChar(Pointer(PAnsiChar(FByteBuffer)+10), True, PSQL_TIMESTAMP_STRUCT(fColDataPtr)^.hour, PSQL_TIMESTAMP_STRUCT(fColDataPtr)^.minute,
+                        TimeToIso8601PChar(PUTF8Char(FByteBuffer)+10, True, PSQL_TIMESTAMP_STRUCT(fColDataPtr)^.hour, PSQL_TIMESTAMP_STRUCT(fColDataPtr)^.minute,
                           PSQL_TIMESTAMP_STRUCT(fColDataPtr)^.second, PSQL_TIMESTAMP_STRUCT(fColDataPtr)^.fraction, 'T', jcoMilliseconds in JSONComposeOptions);
-                        JSONWriter.AddNoJSONEscape(Pointer(FByteBuffer),19+(4*Ord(jcoMilliseconds in JSONComposeOptions)));
+                        JSONWriter.AddNoJSONEscape(PUTF8Char(FByteBuffer),19+(4*Ord(jcoMilliseconds in JSONComposeOptions)));
                         if jcoMongoISODate in JSONComposeOptions
                         then JSONWriter.AddShort('Z")')
                         else JSONWriter.Add('"');
@@ -449,9 +398,8 @@ begin
               if ConSettings^.ClientCodePage^.CP = zCP_UTF8 then
                 JSONWriter.AddJSONEscape(fColDataPtr, fStrLen_or_Ind)
               else begin
-                PRawToUnicode(fColDataPtr, fStrLen_or_Ind, ConSettings^.ClientCodePage^.CP, FUniTemp);
+                FUniTemp := PRawToUnicode(fColDataPtr, fStrLen_or_Ind, ConSettings^.ClientCodePage^.CP);
                 JSONWriter.AddJSONEscapeW(Pointer(FUniTemp), Length(FUniTemp));
-                FUniTemp := '';
               end;
             end;
             JSONWriter.Add('"');
@@ -482,14 +430,14 @@ begin
       JSONWriter.Add('}');
   end;
 end;
-{$ENDIF WITH_COLUMNS_TO_JSON}
+{$ENDIF USE_SYNCOMMONS}
 
 function TAbstractODBCResultSet.CreateODBCConvertError(ColumnIndex: Integer;
-  DataType: TZSQLType): EZSQLException;
+  DataType: Word): EZODBCConvertError;
 begin
-  Result := EZSQLException.Create(Format(SErrorConvertionField,
+  Result := EZODBCConvertError.Create(Format(SErrorConvertionField,
         [TZColumnInfo(ColumnsInfo[ColumnIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).ColumnLabel,
-        TypInfo.GetEnumName(TypeInfo(TZSQLType), Ord(DataType))]));
+        IntToStr(DataType)]));
 end;
 
 {$IFNDEF NO_ANSISTRING}
@@ -497,7 +445,6 @@ function TAbstractODBCResultSet.GetAnsiString(ColumnIndex: Integer): AnsiString;
 var P: Pointer;
   L: NativeUInt;
 begin
-  Result := '';
   with TZODBCColumnInfo(ColumnsInfo[ColumnIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}]) do begin
     if (Ord(ColumnType) < Ord(stString)) or (ColumnType in [stBytes, stBinaryStream]) then begin
       PAnsiChar(P) := GetPAnsiChar(ColumnIndex, L);
@@ -506,31 +453,32 @@ begin
       Result := ''
     else case ColumnType of
       stString, stUnicodeString: begin
-          if fIsUnicodeDriver then begin
-            L := fStrLen_or_Ind shr 1;
-            if FixedWidth then
-              L := GetAbsorbedTrailingSpacesLen(PWideChar(fColDataPtr), L);
-            PUnicodeToRaw(fColDataPtr, L, zOSCodePage, RawByteString(Result));
-          end else begin
-            L := fStrLen_or_Ind;
-            if FixedWidth then
-              L := GetAbsorbedTrailingSpacesLen(PAnsiChar(fColDataPtr), L);
-            if FClientCP = zOSCodePage then
-              System.SetString(Result, PAnsiChar(fColDataPtr), L)
-            else begin
-              PRawToUnicode(fColDataPtr, l, FClientCP, FUniTemp);
-              PUnicodeToRaw(Pointer(FUniTemp), Length(FUniTemp), zOSCodePage, RawByteString(Result));
-            end;
-          end;
+                        if fIsUnicodeDriver then begin
+                          L := fStrLen_or_Ind shr 1;
+                          if FixedWidth then
+                            L := GetAbsorbedTrailingSpacesLen(PWideChar(fColDataPtr), L);
+                          Result := PUnicodeToRaw(fColDataPtr, L, zOSCodePage);
+                        end else begin
+                          L := fStrLen_or_Ind;
+                          if FixedWidth then
+                            L := GetAbsorbedTrailingSpacesLen(PAnsiChar(fColDataPtr), L);
+                          if FClientCP = zOSCodePage then
+                            System.SetString(Result, PAnsiChar(fColDataPtr), L)
+                          else begin
+                            FUniTemp := PRawToUnicode(fColDataPtr, l, FClientCP);
+                            Result := PUnicodeToRaw(Pointer(FUniTemp), Length(FUniTemp), zOSCodePage);
+                          end;
+                        end;
         end;
       stAsciiStream, stUnicodeStream: begin
           FTempLob := GetBlob(ColumnIndex);
           if FTempLob <> nil then begin
             Result := FTempLob.GetAnsiString;
             FTempLob := nil;
-          end;
+          end else
+            Result := '';
         end;
-      else raise CreateODBCConvertError(ColumnIndex, stString);
+      else Result := '';
     end;
   end;
 end;
@@ -895,7 +843,7 @@ begin
                   else goto fail;
                 end;
       else
-fail:          raise CreateODBCConvertError(ColumnIndex, stGUID);
+fail:          raise CreateODBCConvertError(ColumnIndex, Ord(ColumnType));
     end;
   end else
     FillChar(Result, SizeOf(TGUID), #0);
@@ -1056,7 +1004,7 @@ begin
                       Result := PAnsiChar(FByteBuffer);
                     end;
       stCurrency:   begin
-                      CurrToRaw(ODBCNumeric2Curr(fColDataPtr), '.', PAnsiChar(FByteBuffer), @Result);
+                      CurrToRaw(ODBCNumeric2Curr(fColDataPtr), PAnsiChar(FByteBuffer), @Result);
 Set_Results:          Len := Result - PAnsiChar(FByteBuffer);
                       Result := PAnsiChar(FByteBuffer);
                     end;
@@ -1190,7 +1138,7 @@ begin
                       Result := PWideChar(FByteBuffer);
                     end;
       stCurrency:   begin
-                      CurrToUnicode(ODBCNumeric2Curr(fColDataPtr), '.', PWideChar(FByteBuffer), @Result);
+                      CurrToUnicode(ODBCNumeric2Curr(fColDataPtr), PWideChar(FByteBuffer), @Result);
 Set_Results:          Len := Result - PWideChar(FByteBuffer);
                       Result := PWideChar(FByteBuffer);
                     end;
@@ -1258,7 +1206,7 @@ Set_Results:          Len := Result - PWideChar(FByteBuffer);
                         Len := fStrLen_or_Ind;
                         if FixedWidth then
                           Len := GetAbsorbedTrailingSpacesLen(PAnsiChar(fColDataPtr), Len);
-                        PRawToUnicode(fColDataPtr, Len, FClientCP, FUniTemp);
+                        fUniTemp := PRawToUnicode(fColDataPtr, Len, FClientCP);
                         goto Set_From_Temp;
                       end;
                     end;
@@ -1611,18 +1559,19 @@ function TAbstractODBCResultSet.GetUTF8String(ColumnIndex: Integer): UTF8String;
 var P: Pointer;
   L: NativeUInt;
 begin
-  Result := '';
-  if not IsNull(ColumnIndex) then with TZODBCColumnInfo(ColumnsInfo[ColumnIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}]) do begin
+  with TZODBCColumnInfo(ColumnsInfo[ColumnIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}]) do begin
     if (Ord(ColumnType) < Ord(stString)) or (ColumnType in [stBytes, stBinaryStream]) then begin
       P := GetPAnsiChar(ColumnIndex, L);
       System.SetString(Result, PAnsiChar(P), L);
-    end else case ColumnType of
+    end else if IsNull(ColumnIndex) then  //Sets LastWasNull, fColDataPtr, fStrLen_or_Ind!!
+      Result := ''
+    else case ColumnType of
       stString, stUnicodeString: begin
                         if fIsUnicodeDriver then begin
                           L := fStrLen_or_Ind shr 1;
                           if FixedWidth then
                             L := GetAbsorbedTrailingSpacesLen(PWideChar(fColDataPtr), L);
-                          PUnicodeToRaw(fColDataPtr, L, zCP_UTF8, RawByteString(Result));
+                          Result := PUnicodeToRaw(fColDataPtr, L, zCP_UTF8);
                         end else begin
                           L := fStrLen_or_Ind;
                           if FixedWidth then
@@ -1630,8 +1579,8 @@ begin
                           if FClientCP = zCP_UTF8 then
                             System.SetString(Result, PAnsiChar(fColDataPtr), L)
                           else begin
-                            PRawToUnicode(fColDataPtr, l, FClientCP, FUniTemp);
-                            PUnicodeToRaw(Pointer(FUniTemp), Length(FUniTemp), zCP_UTF8, RawByteString(Result));
+                            FUniTemp := PRawToUnicode(fColDataPtr, l, FClientCP);
+                            Result := PUnicodeToRaw(Pointer(FUniTemp), Length(FUniTemp), zCP_UTF8);
                           end;
                         end;
         end;
@@ -1641,9 +1590,10 @@ begin
           if FTempLob <> nil then begin
             Result := FTempLob.GetUTF8String;
             FTempLob := nil;
-          end;
+          end else
+            Result := '';
         end;
-      else raise CreateODBCConvertError(ColumnIndex, stString);
+      else Result := '';
     end;
   end;
 end;
@@ -1866,11 +1816,8 @@ var
       end;
   end;
   function IsMoney: Boolean;
-  var TypeName: String;
   begin
-    TypeName := '';
-    ColStrAttribute(ColumnNumber, SQL_DESC_TYPE_NAME, StrBuf, TypeName);
-    Result := (ZFastCode.Pos('MONEY', UpperCase(TypeName)) > 0); //handle smallmoney oslt too
+    Result := (ZFastCode.Pos('MONEY', UpperCase(ColStrAttribute(ColumnNumber, SQL_DESC_TYPE_NAME, StrBuf))) > 0); //handle smallmoney oslt too
   end;
 begin
   if Closed and Assigned(fPHSTMT^) then begin
@@ -1909,17 +1856,17 @@ begin
           Writable := bufSQLLEN <> SQL_ATTR_READONLY;
           DefinitelyWritable := bufSQLLEN = SQL_ATTR_WRITE;
 
-          ColStrAttribute(ColumnNumber, SQL_DESC_LABEL, StrBuf, ColumnLabel);
-          ColStrAttribute(ColumnNumber, SQL_DESC_BASE_COLUMN_NAME, StrBuf, ColumnName);
+          ColumnLabel := ColStrAttribute(ColumnNumber, SQL_DESC_LABEL, StrBuf);
+          ColumnName := ColStrAttribute(ColumnNumber, SQL_DESC_BASE_COLUMN_NAME, StrBuf);
           if ColumnName = '' then
-            ColStrAttribute(ColumnNumber, SQL_DESC_NAME, StrBuf, ColumnName);
+            ColumnName := ColStrAttribute(ColumnNumber, SQL_DESC_NAME, StrBuf);
           if ColumnName <> '' then begin//aggregates like SUM() don't have a columname -> skip processing
-            ColStrAttribute(ColumnNumber, SQL_DESC_BASE_TABLE_NAME, StrBuf, TableName);
+            TableName := ColStrAttribute(ColumnNumber, SQL_DESC_BASE_TABLE_NAME, StrBuf);
             if TableName = '' then
-              ColStrAttribute(ColumnNumber, SQL_DESC_TABLE_NAME, StrBuf, TableName);
+              TableName := ColStrAttribute(ColumnNumber, SQL_DESC_TABLE_NAME, StrBuf);
             if TableName <> '' then begin //no table? -> no schema or catalog !
-              ColStrAttribute(ColumnNumber, SQL_DESC_SCHEMA_NAME, StrBuf, SchemaName);
-              ColStrAttribute(ColumnNumber, SQL_DESC_CATALOG_NAME, StrBuf, CatalogName);
+              SchemaName := ColStrAttribute(ColumnNumber, SQL_DESC_SCHEMA_NAME, StrBuf);
+              CatalogName := ColStrAttribute(ColumnNumber, SQL_DESC_CATALOG_NAME, StrBuf);
             end;
           end;
           //DefaultValue -> not implemented
@@ -1940,10 +1887,11 @@ begin
             SQL_CHAR, SQL_WCHAR: begin
                 FixedWidth := True;
                 Scale := Precision;
+                Signed := True;
               end;
             SQL_BINARY: begin
                 Precision := ColNumAttribute(ColumnNumber, SQL_DESC_LENGTH);
-                Scale := Precision;
+                Signed := True;
                 FixedWidth := True;
               end;
             SQL_VARCHAR, SQL_WVARCHAR, SQL_VARBINARY:
@@ -2032,7 +1980,6 @@ begin
     end;
     inherited Open;
   end;
-  FCursorLocation := rctServer;
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
@@ -2056,8 +2003,8 @@ begin
       nil, 0, nil, @Result));
 end;
 
-procedure TODBCResultSetW.ColStrAttribute(ColumnNumber,
-  FieldIdentifier: SQLUSMALLINT; const Buf: TByteDynArray; var Result: String);
+function TODBCResultSetW.ColStrAttribute(ColumnNumber,
+  FieldIdentifier: SQLUSMALLINT; const Buf: TByteDynArray): String;
 var
   StringLength: SQLSMALLINT;
 begin
@@ -2068,7 +2015,7 @@ begin
     {$IFDEF UNICODE}
     System.SetString(Result, PWideChar(Pointer(Buf)), StringLength shr 1)
     {$ELSE}
-    PUnicodeToRaw(PWideChar(Pointer(Buf)), StringLength shr 1, zCP_UTF8, RawByteString(Result))
+    Result := PUnicodeToRaw(PWideChar(Pointer(Buf)), StringLength shr 1, zCP_UTF8)
     {$ENDIF}
   else Result := '';
 end;
@@ -2128,8 +2075,8 @@ begin
       nil, 0, nil, @Result));
 end;
 
-procedure TODBCResultSetA.ColStrAttribute(ColumnNumber,
-  FieldIdentifier: SQLUSMALLINT; const Buf: TByteDynArray; var Result: String);
+function TODBCResultSetA.ColStrAttribute(ColumnNumber,
+  FieldIdentifier: SQLUSMALLINT; const Buf: TByteDynArray): String;
 var
   StringLength: SQLSMALLINT;
 begin
@@ -2138,7 +2085,7 @@ begin
        Pointer(Buf), Length(Buf), @StringLength, nil));
   if StringLength > 0 then
     {$IFDEF UNICODE}
-    PRawToUnicode(PAnsiChar(Pointer(Buf)), StringLength, FClientCP, Result)
+    Result := PRawToUnicode(PAnsiChar(Pointer(Buf)), StringLength, FClientCP)
     {$ELSE}
     System.SetString(Result, PAnsiChar(Pointer(Buf)), StringLength)
     {$ENDIF}
@@ -2168,7 +2115,7 @@ begin
     @NameLength, @DataType, @ColumnSize, @DecimalDigits, @Nullable));
   if NameLength > 0 then begin
     {$IFDEF UNICODE}
-    PRawToUnicode(Pointer(Buf), NameLength, FClientCP, ColumnInfo.ColumnName);
+    ColumnInfo.ColumnName := PRawToUnicode(Pointer(Buf), NameLength, FClientCP);
     {$ELSE}
     SetString(ColumnName, PAnsiChar(Pointer(Buf)), NameLength);
     ColumnInfo.ColumnName := ColumnName;
@@ -2352,19 +2299,38 @@ end;
 { TZParamODBCResultSet }
 
 constructor TZParamODBCResultSet.Create(const Statement: IZStatement; const SQL: String;
-  BindList: TZBindList);
-var I: Integer;
-    ColumnInfo: TZODBCOutParamColumnInfo;
-    BindValue: PZBindValue;
-    Bind: PZODBCBindValue absolute BindValue;
+  ODBCParamBindArray: PZODBCParamBindArray; ParamCount: Integer);
 begin
   with Statement.GetConnection do begin
-    inherited Create(Statement, SQL, nil, BindList.ConSettings);
+    inherited Create(Statement, SQL, nil, GetConSettings);
     fIsUnicodeDriver := Supports(GetIZPlainDriver, IODBC3UnicodePlainDriver);
   end;
+  FParamCount := ParamCount;
+  FODBCParamBindArray := ODBCParamBindArray;
+  SetType(rtForwardOnly);
+  Open;
+end;
+
+function TZParamODBCResultSet.Next: Boolean;
+begin
+  Result := False;
+  if (RowNo = 1) then
+    Exit;
+  RowNo := 1;
+  Result := True;
+  FCurrentBufRowNo := 1;
+end;
+
+procedure TZParamODBCResultSet.Open;
+var I: Integer;
+  ColumnInfo: TZODBCOutParamColumnInfo;
+  Bind: PZODBCParamBind;
+begin
   ColumnsInfo.Clear;
-  for i := 0 to BindList.Count -1 do begin
-    BindValue := BindList[I];
+  for i := 0 to FParamCount -1 do begin
+    {$R-}
+    Bind := @FODBCParamBindArray[I];
+    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
     if Bind.InputOutputType in [SQL_PARAM_INPUT_OUTPUT, SQL_RESULT_COL,
       SQL_PARAM_OUTPUT, SQL_RETURN_VALUE, SQL_PARAM_INPUT_OUTPUT_STREAM,
       SQL_PARAM_OUTPUT_STREAM] then begin
@@ -2373,34 +2339,14 @@ begin
       ColumnInfo.fColumnBuffer := Bind.ParameterValuePtr;
       ColumnInfo.fStrLen_or_IndArray := PSQLLENArray(Bind.StrLen_or_IndPtr);
       ColumnInfo.ColumnLabel := Bind.ParamName;
-      ColumnInfo.ColumnType := BindValue.SQLType;
+      ColumnInfo.ColumnType := Bind.SQLType;
       ColumnInfo.Precision := Bind.ColumnSize;
       ColumnInfo.Scale := Bind.DecimalDigits;
       ColumnsInfo.Add(ColumnInfo);
       Inc(fColumnCount);
     end;
   end;
-  SetType(rtForwardOnly);
-  LastRowNo := 1;
-  Inherited Open;
-  FCursorLocation := rctClient;
-end;
-
-function TZParamODBCResultSet.MoveAbsolute(Row: Integer): Boolean;
-begin
-  Result := not Closed and ((Row = 1) or (Row = 0));
-  if (Row >= 0) and (Row <= 2) then
-    RowNo := Row;
-end;
-
-function TZParamODBCResultSet.Next: Boolean;
-begin
-  Result := not Closed and (RowNo = 0);
-  if RowNo = 0 then
-    RowNo := 1
-  else if RowNo = 1 then
-    RowNo := 2; //set AfterLast
-  FCurrentBufRowNo := 1;
+  inherited Open;
 end;
 
 { TZODBCachedResultSetW }
@@ -2412,35 +2358,53 @@ end;
 
 { TZODBCRowAccessorW }
 
-{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "LobCacheMode" not used} {$ENDIF}
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "CachedLobs" not used} {$ENDIF}
 constructor TZODBCRowAccessorW.Create(ColumnsInfo: TObjectList;
   ConSettings: PZConSettings; const OpenLobStreams: TZSortedList;
-  LobCacheMode: TLobCacheMode);
+  CachedLobs: WordBool);
+var TempColumns: TObjectList;
+  I: Integer;
+  Current: TZColumnInfo;
 begin
-  inherited Create(ColumnsInfo, ConSettings, OpenLobStreams, lcmOnLoad); //we can not use uncached lobs with ODBC
-end;
-{$IFDEF FPC} {$POP} {$ENDIF}
-
-{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "ConSettings" not used} {$ENDIF}
-class function TZODBCRowAccessorW.MetadataToAccessorType(
-  ColumnInfo: TZColumnInfo; ConSettings: PZConSettings; Var ColumnCodePage: Word): TZSQLType;
-begin
-  Result := ColumnInfo.ColumnType;
-  if Result in [stString, stAsciiStream] then
-    Result := TZSQLType(Byte(Result)+1); // no raw chars in 4 odbc_w
-  if Result in [stUnicodeString, stUnicodeStream] then
-    ColumnCodePage := zCP_UTF16
+  TempColumns := TObjectList.Create(True);
+  CopyColumnsInfo(ColumnsInfo, TempColumns);
+  for I := 0 to TempColumns.Count -1 do begin
+    Current := TZColumnInfo(TempColumns[i]);
+    if Current.ColumnType in [stString, stAsciiStream] then
+      Current.ColumnType := TZSQLType(Byte(Current.ColumnType)+1); // no raw chars in 4 odbc_w
+    if Current.ColumnType in [stUnicodeString, stUnicodeStream] then
+      Current.ColumnCodePage := zCP_UTF16
+    else if Current.ColumnType in [stBytes, stBinaryStream] then
+      Current.ColumnCodePage := zCP_Binary;
+  end;
+  inherited Create(TempColumns, ConSettings, OpenLobStreams, True); //we can not use uncached lobs with ODBC
+  TempColumns.Free;
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
 { TZODBCRowAccessorA }
 
-{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "LobCacheMode" not used} {$ENDIF}
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "CachedLobs" not used} {$ENDIF}
 constructor TZODBCRowAccessorA.Create(ColumnsInfo: TObjectList;
   ConSettings: PZConSettings; const OpenLobStreams: TZSortedList;
-  LobCacheMode: TLobCacheMode);
+  CachedLobs: WordBool);
+var TempColumns: TObjectList;
+  I: Integer;
+  Current: TZColumnInfo;
 begin
-  inherited Create(ColumnsInfo, ConSettings, OpenLobStreams, lcmOnLoad); //we can not use uncached lobs with ODBC
+  TempColumns := TObjectList.Create(True);
+  CopyColumnsInfo(ColumnsInfo, TempColumns);
+  for I := 0 to TempColumns.Count -1 do begin
+    Current := TZColumnInfo(TempColumns[i]);
+    if Current.ColumnType in [stUnicodeString, stUnicodeStream] then
+      Current.ColumnType := TZSQLType(Byte(Current.ColumnType)-1); // no national chars in 4 odbc_w
+    if Current.ColumnType in [stString, stAsciiStream] then
+      Current.ColumnCodePage := Consettings.ClientCodePage.CP
+    else if Current.ColumnType in [stBytes, stBinaryStream] then
+      Current.ColumnCodePage := zCP_Binary;
+  end;
+  inherited Create(TempColumns, ConSettings, OpenLobStreams, True); //we can not use uncached lobs with OleDB
+  TempColumns.Free;
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
@@ -2449,16 +2413,6 @@ end;
 class function TZODBCachedResultSetA.GetRowAccessorClass: TZRowAccessorClass;
 begin
   Result := TZODBCRowAccessorA;
-end;
-
-class function TZODBCRowAccessorA.MetadataToAccessorType(
-  ColumnInfo: TZColumnInfo; ConSettings: PZConSettings; Var ColumnCodePage: Word): TZSQLType;
-begin
-  Result := ColumnInfo.ColumnType;
-  if Result in [stUnicodeString, stUnicodeStream] then
-    Result := TZSQLType(Byte(Result)-1); // no national chars in 4 odbc_a
-  if Result in [stString, stAsciiStream] then
-    ColumnCodePage := Consettings.ClientCodePage.CP
 end;
 
 initialization

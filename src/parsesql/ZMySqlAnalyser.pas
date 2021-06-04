@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -55,28 +55,23 @@ interface
 
 {$I ZParseSql.inc}
 
-{$IF defined(ZEOS_DISABLE_MYSQL) and defined(ZEOS_DISABLE_ADO) and
-     defined(ZEOS_DISABLE_OLEDB) and defined(ZEOS_DISABLE_ODBC) and defined(ZEOS_DISABLE_PROXY)}
-  {$DEFINE EMPTY_ZMySqlAnalyser}
-{$IFEND}
-
-{$IFNDEF EMPTY_ZMySqlAnalyser}
+{$IFNDEF ZEOS_DISABLE_MYSQL}
 
 uses Classes, ZGenericSqlAnalyser;
 
 type
-  /// <summary>Implements an MySQL statements analyser.</summary>
+
+  {** Implements an MySQL statements analyser. }
   TZMySQLStatementAnalyser = class (TZGenericStatementAnalyser)
   public
-    /// <summary>Creates the object and assignes the main properties.</summary>
     constructor Create;
   end;
 
-{$ENDIF EMPTY_ZMySqlAnalyser}
+{$ENDIF ZEOS_DISABLE_MYSQL}
 
 implementation
 
-{$IFNDEF EMPTY_ZMySqlAnalyser}
+{$IFNDEF ZEOS_DISABLE_MYSQL}
 
 const
   {** The generic constants.}
@@ -100,6 +95,9 @@ const
 
 { TZMySQLStatementAnalyser }
 
+{**
+  Creates the object and assignes the main properties.
+}
 constructor TZMySQLStatementAnalyser.Create;
 begin
   SectionNames := ArrayToStrings(MySQLSectionNames);
@@ -108,7 +106,7 @@ begin
   FromClauses := ArrayToStrings(MySQLFromClauses);
 end;
 
-{$ENDIF EMPTY_ZMySqlAnalyser}
+{$ENDIF ZEOS_DISABLE_MYSQL}
 
 end.
 

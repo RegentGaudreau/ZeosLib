@@ -40,7 +40,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -59,10 +59,8 @@ interface
 {$IFNDEF ZEOS_DISABLE_MYSQL} //if set we have an empty unit
 uses
   Types, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils,
-  ZClasses, ZSysUtils, ZCompatibility,
-  ZPlainMySqlDriver,
-  ZSelectSchema,
-  ZDbcIntfs, ZDbcMetadata, ZDbcConnection;
+  ZClasses, ZSysUtils, ZDbcIntfs, ZDbcMetadata, ZCompatibility,
+  ZDbcConnection, ZPlainMySqlDriver;
 
 type
 
@@ -80,12 +78,8 @@ type
     constructor Create(const Metadata: TZAbstractDatabaseMetadata);
 
     // database/driver/server info:
-    /// <summary>What's the name of this database product?</summary>
-    /// <returns>database product name</returns>
     function GetDatabaseProductName: string; override;
     function GetDatabaseProductVersion: string; override;
-    /// <summary>What's the name of this ZDBC driver?
-    /// <returns>ZDBC driver name</returns>
     function GetDriverName: string; override;
 //    function GetDriverVersion: string; override; -> Same as parent
     function GetDriverMajorVersion: Integer; override;
@@ -103,6 +97,7 @@ type
 //    function SupportsConvert: Boolean; override; -> Not implemented
 //    function SupportsConvertForTypes(FromType: TZSQLType; ToType: TZSQLType):
 //      Boolean; override; -> Not implemented
+//    function SupportsTableCorrelationNames: Boolean; override; -> Not implemented
 //    function SupportsDifferentTableCorrelationNames: Boolean; override; -> Not implemented
 //    function SupportsExpressionsInOrderBy: Boolean; override; -> Not implemented
     function SupportsOrderByUnrelated: Boolean; override;
@@ -129,7 +124,7 @@ type
 //    function SupportsSchemasInIndexDefinitions: Boolean; override; -> Not implemented
 //    function SupportsSchemasInPrivilegeDefinitions: Boolean; override; -> Not implemented
     function SupportsCatalogsInDataManipulation: Boolean; override;
-    function SupportsCatalogsInProcedureCalls: Boolean; override;
+//    function SupportsCatalogsInProcedureCalls: Boolean; override; -> Not implemented
     function SupportsCatalogsInTableDefinitions: Boolean; override;
 //    function SupportsCatalogsInIndexDefinitions: Boolean; override; -> Not implemented
 //    function SupportsCatalogsInPrivilegeDefinitions: Boolean; override; -> Not implemented
@@ -192,8 +187,8 @@ type
 //    function UsesLocalFiles: Boolean; override; -> Not implemented
     function UsesLocalFilePerTable: Boolean; override;
 //    function StoresUpperCaseIdentifiers: Boolean; override; -> Not implemented
-//    function StoresLowerCaseIdentifiers: Boolean; override; -> Not implemented
-//    function StoresMixedCaseIdentifiers: Boolean; override; -> Not implemented
+    function StoresLowerCaseIdentifiers: Boolean; override;
+    function StoresMixedCaseIdentifiers: Boolean; override;
 //    function StoresUpperCaseQuotedIdentifiers: Boolean; override; -> Not implemented
 //    function StoresLowerCaseQuotedIdentifiers: Boolean; override; -> Not implemented
 //    function StoresMixedCaseQuotedIdentifiers: Boolean; override; -> Not implemented
@@ -219,28 +214,26 @@ type
     ['{204A7ABF-36B2-4753-9F48-4942619C31FA}']
     procedure SetMySQL_FieldType_Bit_1_IsBoolean(Value: Boolean);
     procedure SetDataBaseName(const Value: String);
-    procedure Set_lower_case_table_names(Value: Byte);
-    function Get_lower_case_table_names: Byte;
     function isMySQL: Boolean;
     function isMariaDB: Boolean;
   end;
-
   {** Implements MySQL Database Metadata. }
   TZMySQLDatabaseMetadata = class(TZAbstractDatabaseMetadata, IZMySQLDatabaseMetadata)
   private
     FInfo: TStrings;
     FMySQL_FieldType_Bit_1_IsBoolean: Boolean;
-    FBoolCachedResultSets: TZCustomElementList;
-    Flower_case_table_names: Byte;
+    FBoolCachedResultSets: IZCollection;
+    Flower_case_table_names: SmallInt;
     FKnowServerType: Boolean;
     FIsMariaDB: Boolean;
     FIsMySQL: Boolean;
   protected
+    function lower_case_table_names: Boolean;
     procedure detectServerType;
     function CreateDatabaseInfo: IZDatabaseInfo; override; // technobot 2008-06-26
 
     procedure GetCatalogAndNamePattern(const Catalog, SchemaPattern,
-      NamePattern: string; NameQualifier: TZIdentifierQualifier; out OutCatalog, OutNamePattern: string);
+      NamePattern: string; out OutCatalog, OutNamePattern: string);
     function UncachedGetTables(const Catalog: string; const SchemaPattern: string;
       const TableNamePattern: string; const Types: TStringDynArray): IZResultSet; override;
 //    function UncachedGetSchemas: IZResultSet; override; -> Not implemented
@@ -248,138 +241,12 @@ type
     function UncachedGetTableTypes: IZResultSet; override;
     function UncachedGetColumns(const Catalog: string; const SchemaPattern: string;
       const TableNamePattern: string; const ColumnNamePattern: string): IZResultSet; override;
-    /// <summary>Gets a description of the access rights for each table
-    ///  available in a catalog from a cache. Note that a table privilege
-    ///  applies to one or more columns in the table. It would be wrong to
-    ///  assume that this priviledge applies to all columns (this may be true
-    ///  for some systems but is not true for all.)
-    ///
-    ///  Only privileges matching the schema and table name
-    ///  criteria are returned. They are ordered by TABLE_SCHEM,
-    ///  TABLE_NAME, and PRIVILEGE.
-    ///
-    ///  Each privilige description has the following columns:
-    ///  <c>TABLE_CAT</c> String => table catalog (may be null)
-    ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
-    ///  <c>TABLE_NAME</c> String => table name
-    ///  <c>GRANTOR</c> => grantor of access (may be null)
-    ///  <c>GRANTEE</c> String => grantee of access
-    ///  <c>PRIVILEGE</c> String => name of access (SELECT,
-    ///      INSERT, UPDATE, REFRENCES, ...)
-    ///  <c>IS_GRANTABLE</c> String => "YES" if grantee is permitted
-    ///   to grant to others; "NO" if not; null if unknown</summary>
-    ///
-    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
-    ///  selection criteria</param>
-    /// <param>"SchemaPattern" a schema name pattern; "" means drop schema from
-    ///  the selection criteria</param>
-    /// <param>"TableNamePattern" a table name pattern</param>
-    /// <returns><c>ResultSet</c> - each row is a table privilege description</returns>
-    /// <remarks>see GetSearchStringEscape</remarks>
     function UncachedGetTablePrivileges(const Catalog: string; const SchemaPattern: string;
       const TableNamePattern: string): IZResultSet; override;
-    /// <summary>Gets a description of the access rights for a table's columns.
-    ///
-    ///  Only privileges matching the column name criteria are
-    ///  returned. They are ordered by COLUMN_NAME and PRIVILEGE.
-    ///
-    ///  Each privilige description has the following columns:
-    ///  <c>TABLE_CAT</c> String => table catalog (may be null)
-    ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
-    ///  <c>TABLE_NAME</c> String => table name
-    ///  <c>COLUMN_NAME</c> String => column name
-    ///  <c>GRANTOR</c> => grantor of access (may be null)
-    ///  <c>GRANTEE</c> String => grantee of access
-    ///  <c>PRIVILEGE</c> String => name of access (SELECT,
-    ///     INSERT, UPDATE, REFRENCES, ...)
-    ///  <c>IS_GRANTABLE</c> String => "YES" if grantee is permitted
-    ///   to grant to others; "NO" if not; null if unknown</summary>
-    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
-    ///  name from the selection criteria</param>
-    /// <param>"schema" a schema name; An empty schema means drop schema
-    ///  name from the selection criteria</param>
-    /// <param>"table" a table name; An empty table means drop table
-    ///  name from the selection criteria</param>
-    /// <param>"ColumnNamePattern" a column name pattern</param>
-    /// <returns><c>ResultSet</c> - each row is a privilege description</returns>
-    /// <remarks>see GetSearchStringEscape</remarks>
     function UncachedGetColumnPrivileges(const Catalog: string; const Schema: string;
       const Table: string; const ColumnNamePattern: string): IZResultSet; override;
-    /// <summary>Gets a description of a table's primary key columns. They
-    ///  are ordered by COLUMN_NAME.
-    ///  Each primary key column description has the following columns:
-    ///  <c>TABLE_CAT</c> String => table catalog (may be null)
-    ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
-    ///  <c>TABLE_NAME</c> String => table name
-    ///  <c>COLUMN_NAME</c> String => column name
-    ///  <c>KEY_SEQ</c> short => sequence number within primary key
-    ///  <c>PK_NAME</c> String => primary key name (may be null)</summary>
-    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
-    ///  name from the selection criteria</param>
-    /// <param>"schema" a schema name; An empty schema means drop schema
-    ///  name from the selection criteria</param>
-    /// <param>"table" a table name; An empty table means drop table
-    ///  name from the selection criteria</param>
-    /// <returns><c>ResultSet</c> - each row is a primary key column description</returns>
-    /// <remarks>see GetSearchStringEscape</remarks>
     function UncachedGetPrimaryKeys(const Catalog: string; const Schema: string;
       const Table: string): IZResultSet; override;
-    /// <summary>Gets a description of the primary key columns that are
-    ///  referenced by a table's foreign key columns (the primary keys
-    ///  imported by a table).  They are ordered by PKTABLE_CAT,
-    ///  PKTABLE_SCHEM, PKTABLE_NAME, and KEY_SEQ.
-    ///  Each primary key column description has the following columns:
-    ///  <c>PKTABLE_CAT</c> String => primary key table catalog
-    ///       being imported (may be null)
-    ///  <c>PKTABLE_SCHEM</c> String => primary key table schema
-    ///       being imported (may be null)
-    ///  <c>PKTABLE_NAME</c> String => primary key table name
-    ///       being imported
-    ///  <c>PKCOLUMN_NAME</c> String => primary key column name
-    ///       being imported
-    ///  <c>FKTABLE_CAT</c> String => foreign key table catalog (may be null)
-    ///  <c>FKTABLE_SCHEM</c> String => foreign key table schema (may be null)
-    ///  <c>FKTABLE_NAME</c> String => foreign key table name
-    ///  <c>FKCOLUMN_NAME</c> String => foreign key column name
-    ///  <c>KEY_SEQ</c> short => sequence number within foreign key
-    ///  <c>UPDATE_RULE</c> short => What happens to
-    ///        foreign key when primary is updated:
-    ///        importedNoAction - do not allow update of primary
-    ///                key if it has been imported
-    ///        importedKeyCascade - change imported key to agree
-    ///                with primary key update
-    ///        importedKeySetNull - change imported key to NULL if
-    ///                its primary key has been updated
-    ///        importedKeySetDefault - change imported key to default values
-    ///                if its primary key has been updated
-    ///        importedKeyRestrict - same as importedKeyNoAction
-    ///                                  (for ODBC 2.x compatibility)
-    ///  <c>DELETE_RULE</c> short => What happens to
-    ///       the foreign key when primary is deleted.
-    ///        importedKeyNoAction - do not allow delete of primary
-    ///                key if it has been imported
-    ///        importedKeyCascade - delete rows that import a deleted key
-    ///       importedKeySetNull - change imported key to NULL if
-    ///                its primary key has been deleted
-    ///        importedKeyRestrict - same as importedKeyNoAction
-    ///                                  (for ODBC 2.x compatibility)
-    ///        importedKeySetDefault - change imported key to default if
-    ///                its primary key has been deleted
-    ///  <c>FK_NAME</c> String => foreign key name (may be null)
-    ///  <c>PK_NAME</c> String => primary key name (may be null)
-    ///  <c>DEFERRABILITY</c> short => can the evaluation of foreign key
-    ///       constraints be deferred until commit
-    ///        importedKeyInitiallyDeferred - see SQL92 for definition
-    ///        importedKeyInitiallyImmediate - see SQL92 for definition
-    ///        importedKeyNotDeferrable - see SQL92 for definition</summary>
-    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
-    ///  name from the selection criteria</param>
-    /// <param>"schema" a schema name; An empty schema means drop schema
-    ///  name from the selection criteria</param>
-    /// <param>"table" a table name; An empty table means drop table
-    ///  name from the selection criteria</param>
-    /// <returns><c>ResultSet</c> - each row is imported key column description</returns>
-    /// <remarks>see GetSearchStringEscape;GetExportedKeys</remarks>
     function UncachedGetImportedKeys(const Catalog: string; const Schema: string;
       const Table: string): IZResultSet; override;
     function UncachedGetExportedKeys(const Catalog: string; const Schema: string;
@@ -418,10 +285,6 @@ type
     constructor Create(Connection: TZAbstractDbcConnection; const Url: TZURL); override;
     destructor Destroy; override;
   public
-    function GetIdentifierConverter: IZIdentifierConverter; override;
-  public
-    function Get_lower_case_table_names: Byte;
-    procedure Set_lower_case_table_names(Value: Byte);
     procedure SetMySQL_FieldType_Bit_1_IsBoolean(Value: Boolean);
     procedure SetDataBaseName(const Value: String);
     procedure ClearCache; override;
@@ -429,41 +292,16 @@ type
     function isMariaDB: Boolean;
   end;
 
-  {** Implements a MySQL Case Sensitive/Unsensitive identifier convertor. }
-  TZMySQLIdentifierConverter = class (TZDefaultIdentifierConvertor)
-  private
-    Flower_case_table_names: Byte;
-  public
-    constructor Create(const Metadata: IZDatabaseMetadata;
-      lower_case_table_names: Byte);
-  public
-    function Quote(const Value: string; Qualifier: TZIdentifierQualifier = iqUnspecified): string; override;
-  end;
-
 {$ENDIF ZEOS_DISABLE_MYSQL} //if set we have an empty unit
 implementation
 {$IFNDEF ZEOS_DISABLE_MYSQL} //if set we have an empty unit
 
 uses
-  {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings,{$ENDIF}
+  Math, {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings,{$ENDIF}
   {$IFDEF UNICODE}ZEncoding,{$ENDIF}
-  ZFastCode, ZMessages, ZMatchPattern,
-  ZDbcMySqlUtils, ZDbcUtils, ZDbcProperties, ZDbcMySql;
+  ZFastCode, ZMessages, ZDbcMySqlUtils, ZDbcUtils, ZCollections,
+  ZDbcProperties, ZDbcMySql;
 
-
-type
-  PIZResultSet = ^IZResultSet;
-
-  TZResultSetList = class(TZCustomElementList)
-  protected
-    ///  if ElementNeedsFinalize is False the method will never be called.
-    ///  Otherwise you may finalize managed types beeing part of each element,
-    ///  such as Strings, Objects etc.</summary>
-    /// <param>"Ptr" the address of the element an action happens for.</param>
-    /// <param>"Index" the index of the element.</param>
-    /// <returns>The address or raises an EListError if the Index is invalid.</returns>
-    procedure Notify(Ptr: Pointer; Action: TListNotification); override;
-  end;
 { TZMySQLDatabaseInfo }
 
 {**
@@ -478,6 +316,10 @@ end;
 //----------------------------------------------------------------------
 // First, a variety of minor information about the target database.
 
+{**
+  What's the name of this database product?
+  @return database product name
+}
 function TZMySQLDatabaseInfo.GetDatabaseProductName: string;
   procedure GetFork;
   var S, F: String;
@@ -524,6 +366,10 @@ begin
   Result := FServerVersion;
 end;
 
+{**
+  What's the name of this JDBC driver?
+  @return JDBC driver name
+}
 function TZMySQLDatabaseInfo.GetDriverName: string;
 begin
   Result := 'Zeos Database Connectivity Driver for MySQL';
@@ -554,6 +400,26 @@ end;
 function TZMySQLDatabaseInfo.UsesLocalFilePerTable: Boolean;
 begin
   Result := True;
+end;
+
+{**
+  Does the database treat mixed case unquoted SQL identifiers as
+  case insensitive and store them in lower case?
+  @return <code>true</code> if so; <code>false</code> otherwise
+}
+function TZMySQLDatabaseInfo.StoresLowerCaseIdentifiers: Boolean;
+begin
+  Result := True; //https://dev.mysql.com/doc/refman/5.7/en/identifier-case-sensitivity.html
+end;
+
+{**
+  Does the database treat mixed case unquoted SQL identifiers as
+  case insensitive and store them in mixed case?
+  @return <code>true</code> if so; <code>false</code> otherwise
+}
+function TZMySQLDatabaseInfo.StoresMixedCaseIdentifiers: Boolean;
+begin
+  Result := False; //https://dev.mysql.com/doc/refman/5.7/en/identifier-case-sensitivity.html
 end;
 
 {**
@@ -786,16 +652,7 @@ var
   MinorVersion: Integer;
 begin
   GetVersion(MajorVersion, MinorVersion);
-  Result := (MajorVersion > 3) or ((MajorVersion = 3) and (MinorVersion >= 22));
-end;
-
-{**
-  Can a catalog name be used in a procedure call statement?
-  @return <code>true</code> if so; <code>false</code> otherwise
-}
-function TZMySQLDatabaseInfo.SupportsCatalogsInProcedureCalls: Boolean;
-begin
-  Result := SupportsCatalogsInDataManipulation;
+  Result := ((MajorVersion = 3) and (MinorVersion >= 22)) or (MajorVersion > 3);
 end;
 
 {**
@@ -804,7 +661,7 @@ end;
 }
 function TZMySQLDatabaseInfo.SupportsCatalogsInTableDefinitions: Boolean;
 begin
-  Result := SupportsCatalogsInDataManipulation;
+  Result := False;
 end;
 
 {**
@@ -1159,9 +1016,9 @@ begin
   FInfo.Assign(Url.Properties);
 
   FInfo.Values[DSProps_UseResult] := 'True';
-  FBoolCachedResultSets := TZResultSetList.Create(SizeOF(IZResultSet), True);
+  FBoolCachedResultSets := TZCollection.Create;
+  Flower_case_table_names := -1;
 
-  Flower_case_table_names := $FF;
   FIsMariaDB := false;
   FIsMySQL := false;
   FKnowServerType := false;
@@ -1173,7 +1030,6 @@ end;
 destructor TZMySQLDatabaseMetadata.Destroy;
 begin
   FreeAndNil(FInfo);
-  FreeAndNil(FBoolCachedResultSets);
   inherited Destroy;
 end;
 
@@ -1188,38 +1044,33 @@ begin
 end;
 
 procedure TZMySQLDatabaseMetadata.GetCatalogAndNamePattern(const Catalog,
-  SchemaPattern, NamePattern: string; NameQualifier: TZIdentifierQualifier;
-  out OutCatalog, OutNamePattern: string);
+  SchemaPattern, NamePattern: string; out OutCatalog, OutNamePattern: string);
 begin
   if Catalog = '' then
-    if SchemaPattern <> ''
-    then OutCatalog := SchemaPattern
-    else OutCatalog := FDatabase
-  else OutCatalog := Catalog;
-  if FIC.IsQuoted(OutCatalog) then
-    OutCatalog := FIC.ExtractQuote(OutCatalog);
-  if Flower_case_table_names > 0 then
-    OutCatalog := AnsiLowerCase(OutCatalog);
-  if NamePattern = ''
-  then OutNamePattern := '%'
-  else begin
-    if FIC.IsQuoted(NamePattern)
-    then OutNamePattern := FIC.ExtractQuote(NamePattern)
-    else OutNamePattern := NamePattern;
-    if (NameQualifier in [iqCatalog, iqSchema, iqTable, iqEvent, iqTrigger]) and
-       (Flower_case_table_names > 0) then
-      OutNamePattern := AnsiLowerCase(OutNamePattern);
-  end;
+  begin
+    if SchemaPattern <> '' then
+      OutCatalog := NormalizePatternCase(SchemaPattern)
+    else
+      OutCatalog := NormalizePatternCase(FDatabase);
+  end
+  else
+    OutCatalog := NormalizePatternCase(Catalog);
+
+  if NamePattern = '' then
+    OutNamePattern := '%'
+  else
+    OutNamePattern := NormalizePatternCase(NamePattern);
 end;
 
-function TZMySQLDatabaseMetadata.GetIdentifierConverter: IZIdentifierConverter;
+function TZMySQLDatabaseMetadata.lower_case_table_names: Boolean;
 begin
-  Result := TZMySQLIdentifierConverter.Create(Self, Flower_case_table_names);
-end;
-
-function TZMySQLDatabaseMetadata.Get_lower_case_table_names: Byte;
-begin
-  Result := Flower_case_table_names;
+  if Flower_case_table_names = -1 then
+    with GetConnection.CreateStatement.ExecuteQuery('show variables like ''lower_case_table_names''') do begin
+      Next;
+      Flower_case_table_names := GetByte(FirstDBCIndex);
+      Close;
+    end;
+  Result := Flower_case_table_names > 0;
 end;
 
 procedure TZMySQLDatabaseMetadata.SetDataBaseName(const Value: String);
@@ -1228,31 +1079,16 @@ begin
 end;
 
 procedure TZMySQLDatabaseMetadata.SetMySQL_FieldType_Bit_1_IsBoolean(Value: Boolean);
-var I, J: Integer;
-  KeyAndResultSetPair: PZKeyAndResultSetPair;
-  ResultSet: PIZResultSet;
+var I, Idx: Integer;
 begin
   if Value <> FMySQL_FieldType_Bit_1_IsBoolean then begin
     FMySQL_FieldType_Bit_1_IsBoolean := Value;
     for i := FBoolCachedResultSets.Count -1 downto 0 do begin
-      ResultSet := FBoolCachedResultSets[i];
-      for J := 0 to CachedResultSets.Count -1 do begin
-        KeyAndResultSetPair := CachedResultSets[j];
-        if KeyAndResultSetPair.ResultSet = ResultSet^ then begin
-          CachedResultSets.Delete(J);
-          Break;
-        end;
-      end;
+      Idx := CachedResultSets.Values.IndexOf(FBoolCachedResultSets[i]);
+      if Idx > -1 then
+        CachedResultSets.Remove(CachedResultSets.Keys[idx]);
       FBoolCachedResultSets.Delete(i);
     end;
-  end;
-end;
-
-procedure TZMySQLDatabaseMetadata.Set_lower_case_table_names(Value: Byte);
-begin
-  if Flower_case_table_names <> Value then begin
-    Flower_case_table_names := Value;
-    FIC := TZMySQLIdentifierConverter.Create(Self, Flower_case_table_names);
   end;
 end;
 
@@ -1291,75 +1127,51 @@ function TZMySQLDatabaseMetadata.UncachedGetTables(const Catalog: string;
   const Types: TStringDynArray): IZResultSet;
 var
   Len: NativeUInt;
-  LCatalog, LTableNamePattern, Tmp: string;
+  LCatalog, LTableNamePattern: string;
   RS: IZResultSet;
-  List: TStrings;
-  I: Integer;
-  MySQLCon: IZMySQLConnection;
 begin
   Result := inherited UncachedGetTables(Catalog, SchemaPattern, TableNamePattern, Types);
-  List := TStringList.Create;
-  MySQLCon := GetConnection as IZMySQLConnection;
-  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
-  try
-    GetCatalogAndNamePattern(Catalog, SchemaPattern, TableNamePattern,
-      iqTable, LCatalog, LTableNamePattern);
-    if (Catalog = '') and (SchemaPattern <> '') and not HasNoWildcards(SchemaPattern) then begin
-      LCatalog := StripEscape(SchemaPattern);
-      RS := GetCatalogs;
+
+  GetCatalogAndNamePattern(Catalog, SchemaPattern, TableNamePattern,
+    LCatalog, LTableNamePattern);
+  if lower_case_table_names then
+    LTableNamePattern := LowerCase(LTableNamePattern);
+  with (GetConnection as IZMySQLConnection) do begin
+    with CreateStatementWithParams(FInfo).ExecuteQuery(
+      Format('SHOW TABLES FROM %s LIKE ''%s''',
+      [IC.Quote(LCatalog), LTableNamePattern])) do begin
+      while Next do begin
+        Result.MoveToInsertRow;
+        Result.UpdateString(CatalogNameIndex, LCatalog);
+        Result.UpdatePAnsiChar(TableNameIndex, GetPAnsiChar(FirstDbcIndex, Len), Len);
+        Result.UpdateString(TableColumnsSQLType, 'TABLE');
+        Result.InsertRow;
+      end;
+      Close;
+    end;
+
+    // If a table was specified but not found, check if it could be a temporary table
+    if not Result.First and (LTableNamePattern <> '%') then begin
+      SetSilentError(true);
       try
-        while RS.Next do begin
-          Tmp := RS.GetString(FirstDbcIndex);
-          if ZMatchPattern.Like(LCatalog, Pointer(Tmp), Length(Tmp)) then
-            List.Add(Tmp);
+        RS := CreateStatementWithParams(FInfo).ExecuteQuery(
+          Format('SHOW COLUMNS FROM %s.%s',
+          [IC.Quote(LCatalog),
+           IC.Quote(LTableNamePattern)]));
+        if (RS <> nil) then begin
+          if RS.Next then begin
+            Result.MoveToInsertRow;
+            Result.UpdateString(CatalogNameIndex, LCatalog);
+            Result.UpdateString(TableNameIndex, LTableNamePattern);
+            Result.UpdateString(TableColumnsSQLType, 'TABLE');
+            Result.InsertRow;
+          end;
+          Rs.Close;
         end;
       finally
-        RS.Close;
-        RS := nil;
-      end;
-    end else
-      List.Add(LCatalog);
-    for i := List.Count -1 downto 0 do begin
-      LCatalog := List[i];
-      List.Delete(I);
-      with MySQLCon.CreateStatementWithParams(FInfo).ExecuteQuery(
-        Format('SHOW TABLES FROM %s LIKE ''%s''',
-        [IC.Quote(LCatalog, iqCatalog), LTableNamePattern])) do begin
-        while Next do begin
-          Result.MoveToInsertRow;
-          Result.UpdateString(CatalogNameIndex, LCatalog);
-          Result.UpdatePAnsiChar(TableNameIndex, GetPAnsiChar(FirstDbcIndex, Len), Len);
-          Result.UpdateRawByteString(TableColumnsSQLType, 'TABLE');
-          Result.InsertRow;
-        end;
-        Close;
-      end;
-
-      // If a table was specified but not found, check if it could be a temporary table
-      if not Result.First and (LTableNamePattern <> '%') then begin
-        MySQLCon.SetSilentError(true);
-        try
-          RS := MySQLCon.CreateStatementWithParams(FInfo).ExecuteQuery(
-            Format('SHOW COLUMNS FROM %s.%s',
-            [IC.Quote(LCatalog, iqCatalog), IC.Quote(LTableNamePattern, iqTable)]));
-          if (RS <> nil) then begin
-            if RS.Next then begin
-              Result.MoveToInsertRow;
-              Result.UpdateString(CatalogNameIndex, LCatalog);
-              Result.UpdateString(TableNameIndex, LTableNamePattern);
-              Result.UpdateString(TableColumnsSQLType, 'TABLE');
-              Result.InsertRow;
-            end;
-            Rs.Close;
-          end;
-        finally
-          MySQLCon.SetSilentError(False);
-        end;
+        SetSilentError(False);
       end;
     end;
-  finally
-    FreeAndNil(List);
-    MySQLCon := nil;
   end;
 end;
 
@@ -1472,21 +1284,24 @@ var
   OrdPosition: Integer;
 
   TableNameList: TStrings;
+  TableNameLength: Integer;
   ColumnIndexes : Array[1..7] of integer;
 begin
   Result := inherited UncachedGetColumns(Catalog, SchemaPattern,
     TableNamePattern, ColumnNamePattern);
 
   GetCatalogAndNamePattern(Catalog, SchemaPattern, ColumnNamePattern,
-    iqColumn, TempCatalog, TempColumnNamePattern);
+    TempCatalog, TempColumnNamePattern);
 
+  TableNameLength := 0;
   TableNameList := TStringList.Create;
   AddToBoolCache := False;
-  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
   try
     with GetTables(Catalog, SchemaPattern, TableNamePattern, nil) do begin
-      while Next do
+      while Next do begin
         TableNameList.Add(GetString(TableNameIndex)); //TABLE_NAME
+        TableNameLength := Max(TableNameLength, Length(TableNameList[TableNameList.Count - 1]));
+      end;
       Close;
     end;
 
@@ -1497,8 +1312,8 @@ begin
 
       with GetConnection.CreateStatementWithParams(FInfo).ExecuteQuery(
         Format('SHOW FULL COLUMNS FROM %s.%s LIKE ''%s''',
-        [IC.Quote(TempCatalog, iqCatalog),
-        IC.Quote(TempTableNamePattern, iqTable),
+        [IC.Quote(TempCatalog),
+        IC.Quote(TempTableNamePattern),
         TempColumnNamePattern])) do
       begin
         ColumnIndexes[1] := FindColumn('Field');
@@ -1529,7 +1344,7 @@ begin
           Result.UpdateRawByteString(TableColColumnTypeNameIndex, TypeName);
           Result.UpdateInt(TableColColumnSizeIndex, ColumnSize);
 
-          if MySQLType in [stCurrency, stBigDecimal, stTime, stTimeStamp, stString, stUnicodeString] then
+          if MySQLType in [stCurrency, stBigDecimal, stString, stUnicodeString] then
             Result.UpdateInt(TableColColumnDecimalDigitsIndex, ColumnDecimals);
 
           //Result.UpdateNull(TableColColumnNumPrecRadixIndex);
@@ -1635,12 +1450,40 @@ begin
       end;
     end;
     if AddToBoolCache then
-      PIZResultSet(TZResultSetList(FBoolCachedResultSets).Add(NativeInt(Len)))^ := Result;
+      FBoolCachedResultSets.Add(Result);
   finally
     TableNameList.Free;
   end;
 end;
 
+{**
+  Gets a description of the access rights for a table's columns.
+
+  <P>Only privileges matching the column name criteria are
+  returned.  They are ordered by COLUMN_NAME and PRIVILEGE.
+
+  <P>Each privilige description has the following columns:
+   <OL>
+ 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
+ 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
+ 	<LI><B>TABLE_NAME</B> String => table name
+ 	<LI><B>COLUMN_NAME</B> String => column name
+ 	<LI><B>GRANTOR</B> => grantor of access (may be null)
+ 	<LI><B>GRANTEE</B> String => grantee of access
+ 	<LI><B>PRIVILEGE</B> String => name of access (SELECT,
+       INSERT, UPDATE, REFRENCES, ...)
+ 	<LI><B>IS_GRANTABLE</B> String => "YES" if grantee is permitted
+       to grant to others; "NO" if not; null if unknown
+   </OL>
+
+  @param catalog a catalog name; "" retrieves those without a
+  catalog; null means drop catalog name from the selection criteria
+  @param schema a schema name; "" retrieves those without a schema
+  @param table a table name
+  @param columnNamePattern a column name pattern
+  @return <code>ResultSet</code> - each row is a column privilege description
+  @see #getSearchStringEscape
+}
 function TZMySQLDatabaseMetadata.UncachedGetColumnPrivileges(const Catalog: string;
   const Schema: string; const Table: string; const ColumnNamePattern: string): IZResultSet;
 const
@@ -1680,7 +1523,6 @@ begin
       + ' AND c.table_name=t.table_name'
       + AppendCondition(SchemaCondition) + AppendCondition(TableNameCondition)
       + AppendCondition(ColumnNameCondition)
-      + ' order by c.column_name, c.column_priv'
     ) do
     begin
       while Next do
@@ -1694,7 +1536,6 @@ begin
 
         AllPrivileges := GetString(column_priv_Index);
         PutSplitString(PrivilegesList, AllPrivileges, ',');
-        TStringList(PrivilegesList).Sort;
 
         for I := 0 to PrivilegesList.Count - 1 do
         begin
@@ -1718,6 +1559,38 @@ begin
   end;
 end;
 
+{**
+  Gets a description of the access rights for each table available
+  in a catalog. Note that a table privilege applies to one or
+  more columns in the table. It would be wrong to assume that
+  this priviledge applies to all columns (this may be true for
+  some systems but is not true for all.)
+
+  <P>Only privileges matching the schema and table name
+  criteria are returned.  They are ordered by TABLE_SCHEM,
+  TABLE_NAME, and PRIVILEGE.
+
+  <P>Each privilige description has the following columns:
+   <OL>
+ 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
+ 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
+ 	<LI><B>TABLE_NAME</B> String => table name
+ 	<LI><B>GRANTOR</B> => grantor of access (may be null)
+ 	<LI><B>GRANTEE</B> String => grantee of access
+ 	<LI><B>PRIVILEGE</B> String => name of access (SELECT,
+       INSERT, UPDATE, REFRENCES, ...)
+ 	<LI><B>IS_GRANTABLE</B> String => "YES" if grantee is permitted
+       to grant to others; "NO" if not; null if unknown
+   </OL>
+
+  @param catalog a catalog name; "" retrieves those without a
+  catalog; null means drop catalog name from the selection criteria
+  @param schemaPattern a schema name pattern; "" retrieves those
+  without a schema
+  @param tableNamePattern a table name pattern
+  @return <code>ResultSet</code> - each row is a table privilege description
+  @see #getSearchStringEscape
+}
 function TZMySQLDatabaseMetadata.UncachedGetTablePrivileges(const Catalog: string;
   const SchemaPattern: string; const TableNamePattern: string): IZResultSet;
 const
@@ -1745,7 +1618,7 @@ begin
   else
     SchemaCondition := ConstructNameCondition(Catalog,'db');
   TableNameCondition := ConstructNameCondition(TableNamePattern,'table_name');
-  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
+
   PrivilegesList := TStringList.Create;
   try
     with GetConnection.CreateStatementWithParams(FInfo).ExecuteQuery(
@@ -1787,12 +1660,33 @@ begin
   end;
 end;
 
+{**
+  Gets a description of a table's primary key columns.  They
+  are ordered by COLUMN_NAME.
+
+  <P>Each primary key column description has the following columns:
+   <OL>
+ 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
+ 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
+ 	<LI><B>TABLE_NAME</B> String => table name
+ 	<LI><B>COLUMN_NAME</B> String => column name
+ 	<LI><B>KEY_SEQ</B> short => sequence number within primary key
+ 	<LI><B>PK_NAME</B> String => primary key name (may be null)
+   </OL>
+
+  @param catalog a catalog name; "" retrieves those without a
+  catalog; null means drop catalog name from the selection criteria
+  @param schema a schema name; "" retrieves those
+  without a schema
+  @param table a table name
+  @return <code>ResultSet</code> - each row is a primary key column description
+  @exception SQLException if a database access error occurs
+}
 function TZMySQLDatabaseMetadata.UncachedGetPrimaryKeys(const Catalog: string;
   const Schema: string; const Table: string): IZResultSet;
 var
   Len: NativeUInt;
-  P: PAnsiChar;
-  L: NativeUInt;
+  KeyType: string;
   LCatalog, LTable: string;
   ColumnIndexes : Array[1..3] of integer;
 begin
@@ -1802,20 +1696,22 @@ begin
   Result:=inherited UncachedGetPrimaryKeys(Catalog, Schema, Table);
 
   GetCatalogAndNamePattern(Catalog, Schema, Table,
-    iqTable, LCatalog, LTable);
-  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
+    LCatalog, LTable);
+
   with GetConnection.CreateStatementWithParams(FInfo).ExecuteQuery(
     Format('SHOW KEYS FROM %s.%s',
-    [IC.Quote(LCatalog, iqCatalog),
-    IC.Quote(LTable, iqTable)])) do begin
+    [IC.Quote(LCatalog),
+    IC.Quote(LTable)])) do
+  begin
     ColumnIndexes[1] := FindColumn('Key_name');
     ColumnIndexes[2] := FindColumn('Column_name');
     ColumnIndexes[3] := FindColumn('Seq_in_index');
     while Next do
     begin
-      P := GetPAnsiChar(ColumnIndexes[1], L);
-      Trim(L, P);
-      if (L >= 3) and ZSysUtils.SameText(PAnsiChar('PRI'), P, 3) then begin
+      KeyType := UpperCase(GetString(ColumnIndexes[1]));
+      KeyType := Copy(KeyType, 1, 3);
+      if KeyType = 'PRI' then
+      begin
         Result.MoveToInsertRow;
         Result.UpdateString(CatalogNameIndex, LCatalog);
         Result.UpdateString(SchemaNameIndex, '');
@@ -1830,6 +1726,73 @@ begin
   end;
 end;
 
+{**
+  Gets a description of the primary key columns that are
+  referenced by a table's foreign key columns (the primary keys
+  imported by a table).  They are ordered by PKTABLE_CAT,
+  PKTABLE_SCHEM, PKTABLE_NAME, and KEY_SEQ.
+
+  <P>Each primary key column description has the following columns:
+   <OL>
+ 	<LI><B>PKTABLE_CAT</B> String => primary key table catalog
+       being imported (may be null)
+ 	<LI><B>PKTABLE_SCHEM</B> String => primary key table schema
+       being imported (may be null)
+ 	<LI><B>PKTABLE_NAME</B> String => primary key table name
+       being imported
+ 	<LI><B>PKCOLUMN_NAME</B> String => primary key column name
+       being imported
+ 	<LI><B>FKTABLE_CAT</B> String => foreign key table catalog (may be null)
+ 	<LI><B>FKTABLE_SCHEM</B> String => foreign key table schema (may be null)
+ 	<LI><B>FKTABLE_NAME</B> String => foreign key table name
+ 	<LI><B>FKCOLUMN_NAME</B> String => foreign key column name
+ 	<LI><B>KEY_SEQ</B> short => sequence number within foreign key
+ 	<LI><B>UPDATE_RULE</B> short => What happens to
+        foreign key when primary is updated:
+       <UL>
+       <LI> importedNoAction - do not allow update of primary
+                key if it has been imported
+       <LI> importedKeyCascade - change imported key to agree
+                with primary key update
+       <LI> importedKeySetNull - change imported key to NULL if
+                its primary key has been updated
+       <LI> importedKeySetDefault - change imported key to default values
+                if its primary key has been updated
+       <LI> importedKeyRestrict - same as importedKeyNoAction
+                                  (for ODBC 2.x compatibility)
+       </UL>
+ 	<LI><B>DELETE_RULE</B> short => What happens to
+       the foreign key when primary is deleted.
+       <UL>
+       <LI> importedKeyNoAction - do not allow delete of primary
+                key if it has been imported
+       <LI> importedKeyCascade - delete rows that import a deleted key
+       <LI> importedKeySetNull - change imported key to NULL if
+                its primary key has been deleted
+       <LI> importedKeyRestrict - same as importedKeyNoAction
+                                  (for ODBC 2.x compatibility)
+       <LI> importedKeySetDefault - change imported key to default if
+                its primary key has been deleted
+       </UL>
+ 	<LI><B>FK_NAME</B> String => foreign key name (may be null)
+ 	<LI><B>PK_NAME</B> String => primary key name (may be null)
+ 	<LI><B>DEFERRABILITY</B> short => can the evaluation of foreign key
+       constraints be deferred until commit
+       <UL>
+       <LI> importedKeyInitiallyDeferred - see SQL92 for definition
+       <LI> importedKeyInitiallyImmediate - see SQL92 for definition
+       <LI> importedKeyNotDeferrable - see SQL92 for definition
+       </UL>
+   </OL>
+
+  @param catalog a catalog name; "" retrieves those without a
+  catalog; null means drop catalog name from the selection criteria
+  @param schema a schema name; "" retrieves those
+  without a schema
+  @param table a table name
+  @return <code>ResultSet</code> - each row is a primary key column description
+  @see #getExportedKeys
+}
 function TZMySQLDatabaseMetadata.UncachedGetImportedKeys(const Catalog: string;
   const Schema: string; const Table: string): IZResultSet;
 var
@@ -1846,14 +1809,14 @@ begin
   Result := inherited UncachedGetImportedKeys(Catalog, Schema, Table);
 
   GetCatalogAndNamePattern(Catalog, Schema, Table,
-    iqTable, LCatalog, LTable);
+    LCatalog, LTable);
 
   KeyList := TStringList.Create;
   CommentList := TStringList.Create;
   try
     with GetConnection.CreateStatementWithParams(FInfo).ExecuteQuery(
       Format('SHOW TABLE STATUS FROM %s LIKE ''%s''',
-      [IC.Quote(LCatalog, iqCatalog), LTable])) do
+      [IC.Quote(LCatalog), LTable])) do
     begin
       ColumnIndexes[1] := FindColumn('Type');
       ColumnIndexes[2] := FindColumn('Comment');
@@ -1988,14 +1951,14 @@ begin
   Result:=inherited UncachedGetExportedKeys(Catalog, Schema, Table);
 
   GetCatalogAndNamePattern(Catalog, Schema, Table,
-    iqTable, LCatalog, LTable);
-  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
+    LCatalog, LTable);
+
   KeyList := TStringList.Create;
   CommentList := TStringList.Create;
   try
     with GetConnection.CreateStatementWithParams(FInfo).ExecuteQuery(
       Format('SHOW TABLE STATUS FROM %s',
-      [IC.Quote(LCatalog, iqCatalog)])) do
+      [IC.Quote(LCatalog)])) do
     begin
       ColumnIndexes[1] := FindColumn('Type');
       ColumnIndexes[2] := FindColumn('Comment');
@@ -2144,7 +2107,7 @@ begin
   try
     with GetConnection.CreateStatementWithParams(FInfo).ExecuteQuery(
       Format('SHOW TABLE STATUS FROM %s',
-      [IC.Quote(LForeignCatalog, iqCatalog)])) do
+      [IC.Quote(LForeignCatalog)])) do
     begin
       ColumnIndexes[1] := FindColumn('Type');
       ColumnIndexes[2] := FindColumn('Comment');
@@ -2374,57 +2337,49 @@ function TZMySQLDatabaseMetadata.UncachedGetIndexInfo(const Catalog: string;
   const Schema: string; const Table: string; Unique: Boolean;
   Approximate: Boolean): IZResultSet;
 var
-  RS: IZResultSet;
+  Len: NativeUInt;
   LCatalog, LTable: string;
-  procedure FillResult(const Result: IZResultSet; const Catalog, Table: String);
-  var
-    Len: NativeUInt;
-    ColumnIndexes : Array[1..7] of integer;
-  begin
-    {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
-    with GetConnection.CreateStatementWithParams(FInfo).ExecuteQuery(
-      'SHOW INDEX FROM '+IC.Quote(Catalog)+'.'+IC.Quote(Table)) do begin
-      ColumnIndexes[1] := FindColumn('Table');
-      ColumnIndexes[2] := FindColumn('Non_unique');
-      ColumnIndexes[3] := FindColumn('Key_name');
-      ColumnIndexes[4] := FindColumn('Seq_in_index');
-      ColumnIndexes[5] := FindColumn('Column_name');
-      ColumnIndexes[6] := FindColumn('Collation');
-      ColumnIndexes[7] := FindColumn('Cardinality');
-      while Next do begin
-        Result.MoveToInsertRow;
-        Result.UpdateString(CatalogNameIndex, Catalog);
-        //Result.UpdateNull(SchemaNameIndex);
-        Result.UpdatePAnsiChar(TableNameIndex, GetPAnsiChar(ColumnIndexes[1], Len), Len);
-        Result.UpdateString(IndexInfoColNonUniqueIndex, LowerCase(BoolStrs[GetInt(ColumnIndexes[2]) = 0]));
-        //Result.UpdateNull(IndexInfoColIndexQualifierIndex);
-        Result.UpdatePAnsiChar(IndexInfoColIndexNameIndex, GetPAnsiChar(ColumnIndexes[3], Len), Len);
-        Result.UpdateByte(IndexInfoColTypeIndex, Ord(tiOther));
-        Result.UpdateInt(IndexInfoColOrdPositionIndex, GetInt(ColumnIndexes[4]));
-        Result.UpdatePAnsiChar(IndexInfoColColumnNameIndex, GetPAnsiChar(ColumnIndexes[5], Len), Len);
-        Result.UpdatePAnsiChar(IndexInfoColAscOrDescIndex, GetPAnsiChar(ColumnIndexes[6], Len), Len);
-        Result.UpdatePAnsiChar(IndexInfoColCardinalityIndex, GetPAnsiChar(ColumnIndexes[7], Len), Len);
-        Result.UpdateInt(IndexInfoColPagesIndex, 0);
-        //Result.UpdateNull(IndexInfoColFilterConditionIndex);
-        Result.InsertRow;
-      end;
-      Close;
-    end;
-  end;
+  ColumnIndexes : Array[1..7] of integer;
 begin
+  if Table = '' then
+    raise Exception.Create(STableIsNotSpecified); //CHANGE IT!
+
   Result:=inherited UncachedGetIndexInfo(Catalog, Schema, Table, Unique, Approximate);
+
   GetCatalogAndNamePattern(Catalog, Schema, Table,
-    iqTable, LCatalog, LTable);
-  if Table = '' then begin
-    RS := GetTables(Catalog, AddEscapeCharToWildcards(Schema), AddEscapeCharToWildcards(Table), nil);
-    while RS.Next do begin
-      LCatalog := RS.GetString(CatalogNameIndex);
-      LTable := RS.GetString(TableNameIndex);
-      FillResult(Result, LCatalog, LTable);
+    LCatalog, LTable);
+
+  with GetConnection.CreateStatementWithParams(FInfo).ExecuteQuery(
+    Format('SHOW INDEX FROM %s.%s',
+    [IC.Quote(LCatalog),
+    IC.Quote(LTable)])) do
+  begin
+    ColumnIndexes[1] := FindColumn('Table');
+    ColumnIndexes[2] := FindColumn('Non_unique');
+    ColumnIndexes[3] := FindColumn('Key_name');
+    ColumnIndexes[4] := FindColumn('Seq_in_index');
+    ColumnIndexes[5] := FindColumn('Column_name');
+    ColumnIndexes[6] := FindColumn('Collation');
+    ColumnIndexes[7] := FindColumn('Cardinality');
+    while Next do
+    begin
+      Result.MoveToInsertRow;
+      Result.UpdateString(CatalogNameIndex, LCatalog);
+      //Result.UpdateNull(SchemaNameIndex);
+      Result.UpdatePAnsiChar(TableNameIndex, GetPAnsiChar(ColumnIndexes[1], Len), Len);
+      Result.UpdateString(IndexInfoColNonUniqueIndex, LowerCase(BoolStrs[GetInt(ColumnIndexes[2]) = 0]));
+      //Result.UpdateNull(IndexInfoColIndexQualifierIndex);
+      Result.UpdatePAnsiChar(IndexInfoColIndexNameIndex, GetPAnsiChar(ColumnIndexes[3], Len), Len);
+      Result.UpdateByte(IndexInfoColTypeIndex, Ord(tiOther));
+      Result.UpdateInt(IndexInfoColOrdPositionIndex, GetInt(ColumnIndexes[4]));
+      Result.UpdatePAnsiChar(IndexInfoColColumnNameIndex, GetPAnsiChar(ColumnIndexes[5], Len), Len);
+      Result.UpdatePAnsiChar(IndexInfoColAscOrDescIndex, GetPAnsiChar(ColumnIndexes[6], Len), Len);
+      Result.UpdatePAnsiChar(IndexInfoColCardinalityIndex, GetPAnsiChar(ColumnIndexes[7], Len), Len);
+      Result.UpdateInt(IndexInfoColPagesIndex, 0);
+      //Result.UpdateNull(IndexInfoColFilterConditionIndex);
+      Result.InsertRow;
     end;
-    RS.Close;
-  end else begin
-    FillResult(Result, LCatalog, LTable);
+    Close;
   end;
 end;
 
@@ -2716,7 +2671,7 @@ begin
     ZFastCode.IntToStr(Ord(ProcedureReturnsResult))+' AS PROCEDURE_TYPE, p.returns AS RETURN_VALUES '+
     ' from mysql.proc p where 1=1'+ AppendCondition(SchemaCondition) + AppendCondition(ProcedureNameCondition)+
     ' ORDER BY p.db, p.name';
-  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
+
   try
     with GetConnection.CreateStatementWithParams(FInfo).ExecuteQuery(SQL) do
     begin
@@ -2966,7 +2921,7 @@ begin
   ProcedureNameCondition := ConstructNameCondition(ProcedureNamePattern, 'P.SPECIFIC_NAME');
 
   Result := inherited UncachedGetProcedureColumns(Catalog, SchemaPattern, ProcedureNamePattern, ColumnNamePattern);
-  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
+
   SQL := '(select '
        + '  SPECIFIC_CATALOG as PROCEDURE_CAT, '
        + '  SPECIFIC_SCHEMA as PROCEDURE_SCHEM, '
@@ -3000,7 +2955,7 @@ begin
         Result.UpdatePAnsiChar(ProcColProcedureNameIndex, GetPAnsiChar(myProcColProcedureNameIndex, Len), Len);
       //ProcColColumnNameIndex
       if not IsNull(myProcColColumnNameIndex) then
-        Result.UpdatePAnsiChar(ProcColColumnNameIndex, GetPAnsiChar(myProcColColumnNameIndex, Len), Len);
+        Result.UpdateString(ProcColColumnNameIndex, GetString(myProcColColumnNameIndex));
       //ProcColColumnTypeIndex
       Result.UpdateShort(ProcColColumnTypeIndex, GetShort(myProcColColumnTypeIndex));
       //ProcColDataTypeIndex
@@ -3122,7 +3077,7 @@ begin
   ColumnNameCondition := ConstructNameCondition(ColumnNamePattern,'COLUMN_NAME');
 
   Result:=inherited UncachedGetCollationAndCharSet(Catalog, SchemaPattern, TableNamePattern, ColumnNamePattern);
-  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
+
   if SchemaCondition <> '' then
   begin
     if TableNamePattern <> '' then
@@ -3210,7 +3165,7 @@ function TZMySQLDatabaseMetadata.UncachedGetCharacterSets: IZResultSet; //EgonHu
 var
   SQL: string;
 begin
-  SQL := 'SELECT CHARACTER_SET_NAME, null FROM INFORMATION_SCHEMA.CHARACTER_SETS';
+  SQL := 'SELECT CHARACTER_SET_NAME FROM INFORMATION_SCHEMA.CHARACTER_SETS';
 
   Result := CopyToVirtualResultSet(
     GetConnection.CreateStatementWithParams(FInfo).ExecuteQuery(SQL),
@@ -3253,42 +3208,5 @@ begin
   result := FIsMariaDB;
 end;
 
-{ TZMySQLIdentifierConverter }
-
-constructor TZMySQLIdentifierConverter.Create(
-  const Metadata: IZDatabaseMetadata; lower_case_table_names: Byte);
-begin
-  inherited Create(Metadata);
-  Flower_case_table_names := lower_case_table_names;
-end;
-
-function TZMySQLIdentifierConverter.Quote(const Value: string;
-  Qualifier: TZIdentifierQualifier): string;
-var
-  QuoteDelim: string;
-  PQ: PChar absolute QuoteDelim;
-begin
-  if (Qualifier in [iqCatalog, iqSchema, iqTable, iqEvent, iqTrigger]) then
-    if GetIdentifierCase(Value, true) = icSpecial then begin
-      QuoteDelim := Metadata.GetDatabaseInfo.GetIdentifierQuoteString;
-      if QuoteDelim = '' then
-        QuoteDelim := '`';
-      Result := SQLQuotedStr(Value, PQ^);
-    end else if (Flower_case_table_names > 0)
-      then Result := AnsiLowerCase(Value)
-      else Result := Value
-  else
-    Result := inherited Quote(Value, Qualifier);
-end;
-
-{ TZResultSetList }
-
-procedure TZResultSetList.Notify(Ptr: Pointer; Action: TListNotification);
-begin
-  if Action = lnDeleted then
-    PIZResultSet(Ptr)^ := nil;
-end;
-
-initialization
 {$ENDIF ZEOS_DISABLE_MYSQL} //if set we have an empty unit
 end.

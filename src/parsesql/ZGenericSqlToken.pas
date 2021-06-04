@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -101,10 +101,6 @@ type
   {** Implements a quote string state object. }
   TZGenericSQLQuoteState = class (TZQuoteState)
   public
-    /// <summary>Return a quoted string token from a string buffer. This method
-    ///  will collect characters until it sees a match to the
-    ///  character that the tokenizer used to switch to this state.</summary>
-    /// <returns>a quoted string token from a string buffer</returns>
     function NextToken(var SPos: PChar; const NTerm: PChar;
       {%H-}Tokenizer: TZTokenizer): TZToken; override;
     function EncodeString(const Value: string; QuoteChar: Char): string; override;
@@ -118,10 +114,6 @@ type
    }
   TZGenericSQLBracketQuoteState = class (TZQuoteState)
   public
-    /// <summary>Return a quoted string token from a string buffer. This method
-    ///  will collect characters until it sees a match to the
-    ///  character that the tokenizer used to switch to this state.</summary>
-    /// <returns>a quoted string token from a string buffer</returns>
     function NextToken(var SPos: PChar; const NTerm: PChar;
       {%H-}Tokenizer: TZTokenizer): TZToken; override;
     function EncodeString(const Value: string; QuoteChar: Char): string; override;
@@ -292,6 +284,13 @@ end;
 
 { TZGenericSQLQuoteState }
 
+{**
+  Return a quoted string token from a reader. This method
+  will collect characters until it sees a match to the
+  character that the tokenizer used to switch to this state.
+
+  @return a quoted string token from a reader
+}
 function TZGenericSQLQuoteState.NextToken(var SPos: PChar;
   const NTerm: PChar;Tokenizer: TZTokenizer): TZToken;
 var
@@ -424,6 +423,13 @@ end;
 
 { TZGenericSQLBracketQuoteState }
 
+{**
+  Return a quoted string token from a reader. This method
+  will collect characters until it sees a match to the
+  character that the tokenizer used to switch to this state.
+
+  @return a quoted string token from a reader
+}
 function TZGenericSQLBracketQuoteState.NextToken(var SPos: PChar;
   const NTerm: PChar; Tokenizer: TZTokenizer): TZToken;
 var

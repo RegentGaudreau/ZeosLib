@@ -119,10 +119,7 @@ type
     {END of PATCH [1185969]: Do tasks after posting updates. ie: Updating AutoInc fields in MySQL }
     procedure RefreshCurrentRow(const Sender: IZCachedResultSet;RowAccessor: TZRowAccessor);
 
-    procedure SetConnection(const Value: IZConnection);
     procedure SetTransaction(const Value: IZTransaction);
-    function HasAutoCommitTransaction: Boolean;
-    procedure FlushStatementCache;
   end;
 
 implementation
@@ -566,7 +563,7 @@ begin
         CheckEquals(FLong, GetLong(stLongIndex), 'GetLong');
         CheckEquals(FFloat, GetFloat(stFloatIndex), 0, 'GetFloat');
         CheckEquals(FDouble, GetDouble(stDoubleIndex), 0, 'GetDouble');
-        GetBigDecimal(stBigDecimalIndex, BCD{%H-});
+        GetBigDecimal(stBigDecimalIndex, BCD);
         CheckEquals(BcdToStr(FBigDecimal), BcdToStr(BCD), 'GetBigDecimal');
         CheckEquals(FString, GetString(stStringIndex), 'GetString');
         CheckEquals(FDate, GetDate(stDateIndex), 0, 'GetDate');
@@ -656,8 +653,7 @@ begin
     FResultSet := CachedResultSet;
     FResultSet.SetResolver(TZEmptyResolver.Create);
     FillResultSet(FResultSet, ROWS_COUNT);
-    FResultSet.PostUpdatesCached;
-    CheckFalse(FResultSet.IsPendingUpdates);
+
     with FResultSet do
     begin
       { Update record values to null}
@@ -714,7 +710,7 @@ begin
         CheckEquals(FLong, GetLong(stLongIndex), 'Field changed; GetLong');
         CheckEquals(FFloat, GetFloat(stFloatIndex), 0, 'Field changed; GetFloat');
         CheckEquals(FDouble, GetDouble(stDoubleIndex), 0, 'Field changed; GetDouble');
-        GetBigDecimal(stBigDecimalIndex, BCD{%H-});
+        GetBigDecimal(stBigDecimalIndex, BCD);
         CheckEquals(BcdToStr(FBigDecimal), BcdToStr(BCD), 'Field changed; GetBigDecimal');
         CheckEquals(FString, GetString(stStringIndex), 'Field changed; GetString');
         CheckEquals(FByteArray, GetBytes(stBytesIndex), 'Field changed; GetBytes');
@@ -996,7 +992,6 @@ end;
 
 { TZEmptyResolver }
 
-{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "...." not used} {$ENDIF}
 {**
   Calculate default values for the fields.
   @param Sender a cached result set object.
@@ -1007,11 +1002,6 @@ procedure TZEmptyResolver.CalculateDefaults(const Sender: IZCachedResultSet;
 begin
 end;
 
-procedure TZEmptyResolver.FlushStatementCache;
-begin
-  //noop
-end;
-
 {**
   Posts cached updates.
   @param Sender a sender CachedResultSet object.
@@ -1019,11 +1009,6 @@ end;
   @param OldRowAccessor a row accessor which contains old column values.
   @param NewRowAccessor a row accessor which contains new column values.
 }
-function TZEmptyResolver.HasAutoCommitTransaction: Boolean;
-begin
-  Result := True;
-end;
-
 procedure TZEmptyResolver.PostUpdates(const Sender: IZCachedResultSet;
   UpdateType: TZRowUpdateType; const OldRowAccessor,
   NewRowAccessor: TZRowAccessor);
@@ -1043,17 +1028,10 @@ begin
 end;
 
 
-procedure TZEmptyResolver.SetConnection(const Value: IZConnection);
-begin
-
-end;
-
 procedure TZEmptyResolver.SetTransaction(const Value: IZTransaction);
 begin
 
 end;
-
-{$IFDEF FPC} {$POP} {$ENDIF}
 
 initialization
   RegisterTest('dbc',TZTestCachedResultSetCase.Suite);

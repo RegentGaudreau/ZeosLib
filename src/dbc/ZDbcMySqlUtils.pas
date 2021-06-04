@@ -40,7 +40,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -49,13 +49,6 @@
 {                                                         }
 {                                 Zeos Development Group. }
 {********************************************************@}
-
-{
-constributor(s):
-  aehimself
-  EgonHugeist
-  Martin Schreiber
-}
 
 unit ZDbcMySqlUtils;
 
@@ -463,7 +456,7 @@ begin
         13, 88, {sjis}
         35, 90, 128..151:  {ucs2}
           begin
-            Result.Precision := (FieldLength shr 2);
+            Result.Precision := (FieldLength div 4);
             if Result.ColumnType = stString
             then Result.CharOctedLength := FieldLength
             else Result.CharOctedLength := FieldLength shr 1;
@@ -480,9 +473,9 @@ begin
         54, 55, 101..124, {utf16}
         56, 62, {utf16le}
         60, 61, 160..183, {utf32}
-        45, 46, 224..247, 255: {utf8mb4}
+        45, 46, 224..247: {utf8mb4}
           begin
-            Result.Precision := (FieldLength shr 2);
+            Result.Precision := (FieldLength div 4);
             if Result.ColumnType = stString
             then Result.CharOctedLength := FieldLength
             else Result.CharOctedLength := FieldLength shr 1;

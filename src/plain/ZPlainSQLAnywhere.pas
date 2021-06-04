@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -55,7 +55,7 @@ interface
 
 {$I ZPlain.inc}
 
-{$IFNDEF ZEOS_DISABLE_SQLANY}
+{$IFNDEF ZEOS_DISABLE_ASA}
 
 uses Classes, ZCompatibility, ZPlainDriver;
 
@@ -2094,9 +2094,9 @@ type
     function GetDescription: string; override;
   end;
 
-{$ENDIF ZEOS_DISABLE_SQLANY}
+{$ENDIF ZEOS_DISABLE_ASA}
 implementation
-{$IFNDEF ZEOS_DISABLE_SQLANY}
+{$IFNDEF ZEOS_DISABLE_ASA}
 
 uses ZPlainLoader, ZEncoding;
 
@@ -2213,5 +2213,5 @@ begin
 end;
 
 initialization
-{$ENDIF ZEOS_DISABLE_SQLANY}
+{$ENDIF ZEOS_DISABLE_ASA}
 end.

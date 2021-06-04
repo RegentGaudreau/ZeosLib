@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -69,101 +69,101 @@ type
   end;
 
   {** Implements a CONCAT function. }
-  TZConcatFunction = class (TZAbstractStringFunction, IZFunction)
+  TZConcatFunction = class (TZAbstractStringFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a SUBSTR function. }
-  TZSubStrFunction = class (TZAbstractStringFunction, IZFunction)
+  TZSubStrFunction = class (TZAbstractStringFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a LEFT function. }
-  TZLeftFunction = class (TZAbstractStringFunction, IZFunction)
+  TZLeftFunction = class (TZAbstractStringFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a RIGHT function. }
-  TZRightFunction = class (TZAbstractStringFunction, IZFunction)
+  TZRightFunction = class (TZAbstractStringFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a STRPOS function. }
-  TZStrPosFunction = class (TZAbstractStringFunction, IZFunction)
+  TZStrPosFunction = class (TZAbstractStringFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a LENGTH function. }
-  TZLengthFunction = class (TZAbstractStringFunction, IZFunction)
+  TZLengthFunction = class (TZAbstractStringFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a UPPER function. }
-  TZUpperFunction = class (TZAbstractStringFunction, IZFunction)
+  TZUpperFunction = class (TZAbstractStringFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a LOWER function. }
-  TZLowerFunction = class (TZAbstractStringFunction, IZFunction)
+  TZLowerFunction = class (TZAbstractStringFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a CAPITALIZE function. }
-  TZCapitalizeFunction = class (TZAbstractStringFunction, IZFunction)
+  TZCapitalizeFunction = class (TZAbstractStringFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a TRIM function. }
-  TZTrimFunction = class (TZAbstractStringFunction, IZFunction)
+  TZTrimFunction = class (TZAbstractStringFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a LTRIM function. }
-  TZLTrimFunction = class (TZAbstractStringFunction, IZFunction)
+  TZLTrimFunction = class (TZAbstractStringFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a RTRIM function. }
-  TZRTrimFunction = class (TZAbstractStringFunction, IZFunction)
+  TZRTrimFunction = class (TZAbstractStringFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a SOUNDEX function. }
-  TZSoundexFunction = class (TZAbstractStringFunction, IZFunction)
+  TZSoundexFunction = class (TZAbstractStringFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
   {** Implements a LEVENSHTEINDIST function. }
-  TZLevenshteinDistanceFunction = class (TZAbstractStringFunction, IZFunction)
+  TZLevenshteinDistanceFunction = class (TZAbstractStringFunction)
   public
     function Execute(Stack: TZExecutionStack;
-      const VariantManager: IZVariantManager): TZVariant;
+      const VariantManager: IZVariantManager): TZVariant; override;
   end;
 
 Function Capitalize(const s: string; const Delims : string = '') : string;
@@ -275,13 +275,16 @@ begin
 
 //  only loop over the items that are different
   for i := 1 to Len1 do
-    for j := 1 to Len2 do begin
+  begin
+    for j := 1 to Len2 do
+    begin
       Cost := ABS(ORD(s[i+start] <> t[j+start]));
-      d[i, j] := Math.Min(
-                     Math.Min(d[i-1,j]+1,          // deletion
+      d[i, j] := Min(
+                     Min(d[i-1,j]+1,          // deletion
                          d[i,j-1]+1),         // insertion
                          d[i-1,j-1]+Cost);    // substitution
     end;
+  end;
   Result := d[Len1, Len2];
 end;
 

@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://zeos.firmos.at  (FORUM)                        }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -55,54 +55,50 @@ interface
 
 {$I ZParseSql.inc}
 
-{$IF defined(ZEOS_DISABLE_DBLIB) and defined(ZEOS_DISABLE_ASA) and
-     defined(ZEOS_DISABLE_SQLANY) and defined(ZEOS_DISABLE_ADO) and
-     defined(ZEOS_DISABLE_OLEDB) and defined(ZEOS_DISABLE_ODBC) and defined(ZEOS_DISABLE_PROXY)}
-  {$DEFINE EMPTY_ZSybaseToken}
-{$IFEND}
+{$IFNDEF ZEOS_DISABLE_DBLIB}
 
-{$IFNDEF DEFINE EMPTY_ZSybaseToken}
-
-uses ZTokenizer, ZGenericSqlToken;
+uses
+  Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils,
+  ZTokenizer, ZGenericSqlToken;
 
 type
-  /// <summary>Implements a Sybase-specific number state object.</summary>
+
+  {** Implements a Sybase-specific number state object. }
   TZSybaseNumberState = TZGenericSQLHexNumberState;
 
-  /// <summary>Implements a Sybase-specific quote string state object.</summary>
+  {** Implements a Sybase-specific quote string state object. }
   TZSybaseQuoteState = TZGenericSQLBracketQuoteState;
 
-  /// <summary>Implements a Sybase-specific a comment state object.</summary>
+  {** Implements a comment state object. }
   TZSybaseCommentState = TZGenericSQLCommentState;
 
-  /// <summary>Implements a Sybase-specific a symbol state object.</summary>
+  {** Implements a symbol state object. }
   TZSybaseSymbolState = class (TZSymbolState)
   public
-    /// <summary>Creates this Sybase-specific symbol state object.</summary>
     constructor Create;
   end;
 
-  /// <summary>Implements a Sybase-specific a word state object.</summary>
+  {** Implements a word state object. }
   TZSybaseWordState = class (TZGenericSQLWordState)
   public
-    /// <summary>Constructs this Sybase-specific word state object.</summary>
     constructor Create;
   end;
 
-  /// <summary>Implements a Sybase-specific a tokenize object.</summary>
+  {** Implements a default tokenizer object. }
   TZSybaseTokenizer = class (TZTokenizer)
   protected
-    /// <summary>Constructs a default state table (as described in the class
-    ///  comment).</summary>
     procedure CreateTokenStates; override;
   end;
 
-{$ENDIF EMPTY_ZSybaseToken}
+{$ENDIF ZEOS_DISABLE_DBLIB}
 implementation
-{$IFNDEF EMPTY_ZSybaseToken}
+{$IFNDEF ZEOS_DISABLE_DBLIB}
 
 { TZSybaseSymbolState }
 
+{**
+  Creates this Sybase-specific symbol state object.
+}
 constructor TZSybaseSymbolState.Create;
 begin
   inherited Create;
@@ -116,6 +112,9 @@ end;
 
 { TZSybaseWordState }
 
+{**
+  Constructs this Sybase-specific word state object.
+}
 constructor TZSybaseWordState.Create;
 begin
   SetWordChars(#0, #191, False);
@@ -131,6 +130,9 @@ end;
 
 { TZSybaseTokenizer }
 
+{**
+  Constructs a default state table (as described in the class comment).
+}
 procedure TZSybaseTokenizer.CreateTokenStates;
 begin
   WhitespaceState := TZWhitespaceState.Create;
@@ -164,5 +166,5 @@ begin
   SetCharacterState('-', '-', CommentState);
 end;
 
-{$ENDIF EMPTY_ZSybaseToken}
+{$ENDIF ZEOS_DISABLE_DBLIB}
 end.
