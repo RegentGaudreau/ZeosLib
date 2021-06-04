@@ -80,6 +80,8 @@ type
     procedure TestAttachAndDetach;
     procedure TestTicket405;
     procedure TestTicket405_Memory;
+    procedure TestTicket458;
+    procedure TestTicket503;
   end;
 
   {** Implements a MBC bug report test case for SQLite components. }
@@ -263,6 +265,91 @@ begin
   finally
     Connection.Database := DataBase;
   end;
+end;
+
+procedure ZTestCompSQLiteBugReport.TestTicket458;
+var
+  Query: TZQuery;
+  Succeeded: Boolean;
+begin
+  Query := CreateQuery;
+  Query.Connection.Connect;
+  Check(Query.Connection.Connected);
+  try
+    Query.SQL.Text := 'drop table TestTicket458';
+    try
+      Query.ExecSQL;
+    except end;
+    Query.SQL.Text := 'Create table TestTicket458(ID GUID)';
+    Query.ExecSQL;
+    Query.Connection.StartTransaction;
+    Succeeded := False;
+    try
+      Query.SQL.Text := 'select * from TestTicket458';
+      Query.Open;
+      CheckEquals(ftGUID, Query.Fields[0].DataType);
+      Query.Close;
+      Query.Connection.ExecuteDirect('create index IDX_TestTicket458_ID on TestTicket458(ID)');
+      Query.Connection.Commit;
+      Query.Connection.StartTransaction;
+      Succeeded := True;
+    finally
+      if not Succeeded then
+        Query.Connection.Rollback;
+      Query.SQL.Text := 'drop table TestTicket458';
+      Query.ExecSQL;
+    end;
+  finally
+    Query.Free;
+  end;
+end;
+
+procedure ZTestCompSQLiteBugReport.TestTicket503;
+const
+  TABLE_CREATE2_SQL = 'CREATE TABLE IF NOT EXISTS some_table2 (field_one INTEGER PRIMARY KEY AUTOINCREMENT, field_two TEXT);';
+  TABLE_DATA2_SQL   = 'INSERT OR IGNORE INTO some_table2 VALUES (%d, '#39'foo %d'#39');';
+var attached_db, current_db: String;
+  Query: TZQuery;
+begin
+  Check(Connection <> nil);
+  attached_db := ChangeFileExt(ParamStr(0), '.sqlite');
+  if FileExists(attached_db) then
+    SysUtils.DeleteFile(attached_db);
+  current_db := Connection.Database;
+  Query := CreateQuery;
+  try
+    Connection.Database := attached_db;
+    Connection.Connect;
+    Check(Connection.Connected);
+    Connection.ExecuteDirect(TABLE_CREATE2_SQL);
+    Connection.ExecuteDirect(Format(TABLE_DATA2_SQL,[Random(10), Random(10)]));
+    Connection.Disconnect;
+    Connection.Database := DataBase;
+    Connection.Connect;
+    Check(Connection.Connected);
+    // attache second database to main database
+    Connection.ExecuteDirect(Format('ATTACH DATABASE %s AS attached_db ;', [QuotedStr(attached_db)]));
+    // select from attached database
+    Query.SQL.Text := 'SELECT * FROM attached_db.some_table2;';
+    Query.Open;
+    CheckFalse(Query.Eof);
+    with Connection.DbcConnection.GetMetadata.GetCatalogs do try
+      Check(Next);
+      CheckEquals('attached_db', GetString(FirstDbcIndex));
+      Check(Next);
+      CheckEquals('main', GetString(FirstDbcIndex));
+      CheckFalse(Next);
+    finally
+      Close;
+    end;
+  finally
+    Connection.Database := current_db;
+    Connection.Disconnect;
+    if FileExists(attached_db) then
+      SysUtils.DeleteFile(attached_db);
+    FreeAndNil(Query);
+  end;
+
 end;
 
 procedure ZTestCompSQLiteBugReport.TestUndefined_Varchar_AsString_Length;

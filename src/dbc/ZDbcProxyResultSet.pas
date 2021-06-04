@@ -55,12 +55,12 @@ interface
 
 {$I ZDbc.inc}
 
-{$IFNDEF ZEOS_DISABLE_PROXY} //if set we have an empty unit
+{$IFDEF ENABLE_PROXY} //if set we have an empty unit
 uses
   {$IFDEF WITH_TOBJECTLIST_REQUIRES_SYSTEM_TYPES}System.Types{$IFNDEF NO_UNIT_CONTNRS}, Contnrs{$ENDIF}{$ELSE}Types{$ENDIF},
-  Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils, System.NetEncoding,
+  Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils,
   ZPlainProxyDriverIntf, ZSysUtils, ZDbcIntfs, ZDbcResultSet, ZDbcLogging,{$IFDEF ZEOS73UP}FmtBCD, ZVariant, {$ENDIF}
-  ZDbcResultSetMetadata, ZCompatibility, XmlDoc, XmlIntf;
+  ZDbcResultSetMetadata, ZCompatibility, {$IFDEF FPC}ZXmlCompat{$ELSE} XmlDoc, XmlIntf{$ENDIF};
 
 type
   {** Implements DBC Layer Proxy ResultSet. }
@@ -323,14 +323,14 @@ type
       ParentResultSet: TZAbstractResultSet);
   End;
 
-{$ENDIF ZEOS_DISABLE_PROXY} //if set we have an empty unit
+{$ENDIF ENABLE_PROXY} //if set we have an empty unit
 implementation
-{$IFNDEF ZEOS_DISABLE_PROXY} //if set we have an empty unit
+{$IFDEF ENABLE_PROXY} //if set we have an empty unit
 
 uses
   {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings,{$ENDIF} Math,
   ZMessages, ZEncoding, ZFastCode, ZDbcMetadata, ZClasses,
-  TypInfo, Variants, xmldom, {$IFDEF WITH_OMNIXML}Xml.omnixmldom,{$ENDIF} EncdDecd;
+  TypInfo, Variants, ZBase64 {$IFNDEF FPC},xmldom{$ENDIF} {$IFDEF WITH_OMNIXML}, Xml.omnixmldom{$ENDIF};
 
 const
   ValueAttr = 'value';
@@ -355,22 +355,25 @@ var
   ConSettings: PZConSettings;
   Metadata: IZDatabaseMetadata;
   x: String;
-  xmldoc: TXMLDocument;
+  xmldoc: {$IFDEF FPC}TZXMLDocument{$ELSE}TXMLDocument{$ENDIF};
 
-  DomVendor: TDOMVendor;
+  {$IFNDEF FPC}DomVendor: TDOMVendor;{$ENDIF}
 begin
   ConSettings := Connection.GetConSettings;
   Metadata := Connection.GetMetadata;
 
   inherited Create(Statement, SQL,
     TZDbcProxyResultSetMetadata.Create(Metadata, SQL, Self), ConSettings);
-
+  {$IFDEF FPC}
+  xmldoc := TZXmlDocument.Create;
+  {$ELSE}
   xmldoc := TXMLDocument.Create(nil);
   // OmiXml preserves the Carriage Return in Strings -> This solves a problem
   // where CRLF gets converted to LF wit MSXML
   DomVendor := DOMVendors.Find('Omni XML');
   if Assigned(DomVendor) then
     xmldoc.DOMImplementation := DomVendor.DOMImplementation;
+  {$ENDIF}
   FXmlDocument := xmldoc as IXMLDocument;
 
   Stream := TMemoryStream.Create;
@@ -445,20 +448,27 @@ begin
       ColumnLabel := ColumnNode.Attributes['label'];
       ColumnName := ColumnNode.Attributes['name'];
       ColumnType := TZSQLType(GetEnumValue(TypeInfo(TZSQLType), ColumnNode.Attributes['type']));
-      {$IFNDEF ZEOS73UP}
       case ColumnType of
         stString, stUnicodeString:
-          if GetConSettings.CPType = cCP_UTF16 then
-            ColumnType := stUnicodeString
-          else
+          {$IFNDEF ZEOS73UP}if GetConSettings.CPType = cCP_UTF16 then {$ENDIF ZEOS73UP} begin
+            ColumnType := stUnicodeString;
+            ColumnCodePage := zCP_UTF16;
+          {$IFNDEF ZEOS73UP}end else begin
             ColumnType := stString;
+            ColumnCodePage := zCP_UTF8;
+          {$ENDIF ZEOS73UP}
+          end;
         stAsciiStream, stUnicodeStream:
-          if GetConSettings.CPType = cCP_UTF16 then
-            ColumnType := stUnicodeStream
-          else
+          {$IFNDEF ZEOS73UP}if GetConSettings.CPType = cCP_UTF16 then {$ENDIF ZEOS73UP} begin
+            ColumnType := stUnicodeStream;
+            ColumnCodePage := zCP_UTF16;
+          {$IFNDEF ZEOS73UP}
+          end else begin
             ColumnType := stAsciiStream;
+            ColumnCodePage := zCP_UTF8
+          {$ENDIF ZEOS73UP}
+          end;
       end;
-      {$ENDIF}
       DefaultValue := ColumnNode.Attributes['defaultvalue'];
       Precision := StrToInt(ColumnNode.Attributes['precision']);
       Scale := StrToInt(ColumnNode.Attributes['scale']);
@@ -660,7 +670,7 @@ begin
   end;
 
   Val := FCurrentRowNode.ChildNodes.Get(ColumnIndex - FirstDbcIndex).Attributes[ValueAttr];
-  Result := RawByteString(Val);
+  Result := RawByteString(VarToStrDef(Val, ''));
 end;
 
 function TZDbcProxyResultSet.GetUnicodeString(ColumnIndex: Integer): ZWideString;
@@ -1360,7 +1370,11 @@ begin
   ColType := ColInfo.ColumnType;
   case ColType of
     stBinaryStream: begin
+      {$IFDEF NO_ANSISTRING}
+      Bytes := DecodeBase64(Val);
+      {$ELSE}
       Bytes := DecodeBase64(AnsiString(Val));
+      {$ENDIF}
       Result := TZAbstractBlob.CreateWithData(@Bytes[0], Length(Bytes)) as IZBlob;
     end;
     stAsciiStream, stUnicodeStream: begin
@@ -1522,7 +1536,9 @@ begin
   CheckClosed;
 {$ENDIF}
   { Checks for maximum row. }
-  Result := False;
+{$IFDEF FPC} // I suppose FPC compiler needs this initial assignment...?
+   Result := False;
+{$ENDIF}
   { Processes negative rows. }
   if Row < 0 then begin
     Row := LastRowNo + Row + 1;
@@ -1556,10 +1572,10 @@ begin
     end;
     RowNo := Row;
   end else begin
-    RaiseForwardOnlyException;
+    raise EZSQLException.Create('This resultset is forward only.');
   end;
 end;
 
-{$ENDIF ZEOS_DISABLE_PROXY} //if set we have an empty unit
+{$ENDIF ENABLE_PROXY} //if set we have an empty unit
 end.
 

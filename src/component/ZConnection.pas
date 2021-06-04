@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -56,7 +56,7 @@ interface
 {$I ZComponent.inc}
 
 uses
-  SysUtils, Classes,  ZAbstractConnection, ZClasses;
+  SysUtils, Classes, ZAbstractConnection, ZTransaction, ZClasses;
 
 const
   ZEOS_MAJOR_VERSION = ZClasses.ZEOS_MAJOR_VERSION;

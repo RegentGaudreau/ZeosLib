@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -64,6 +64,7 @@ interface
 
 uses
   SysUtils, Classes, {$IFDEF MSEgui}mclasses, mdb{$ELSE}DB{$ENDIF},
+  {$IFNDEF DISABLE_ZPARAM}ZDatasetParam,{$ENDIF}
   ZDbcIntfs, ZDbcCachedResultSet, ZDbcCache, ZSqlStrings, ZClasses;
 
 type
@@ -82,6 +83,7 @@ type
   TZUpdateSQL = class(TComponent, IZCachedResolver)
   private
     FTransaction: IZTransaction;
+    FConnection: IZConnection;
     FDataSet: TDataSet;
 
     FDeleteSQL: TZSQLStrings;
@@ -93,7 +95,7 @@ type
     FRefreshStmt: IZPreparedStatement;
 
     FParamCheck: Boolean;
-    FParams: TParams;
+    FParams: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF};
     FMultiStatements: Boolean;
     FBeforeDeleteSQL: TNotifyEvent;
     FBeforeInsertSQL: TNotifyEvent;
@@ -114,7 +116,7 @@ type
     function GetSQL(UpdateKind: TUpdateKind): TStrings;
     procedure SetSQL(UpdateKind: TUpdateKind; Value: TStrings);
     function GetParamsCount: Word;
-    procedure SetParamsList(Value: TParams);
+    procedure SetParamsList(Value: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF});
     procedure SetParamCheck(Value: Boolean);
     procedure SetMultiStatements(Value: Boolean);
 
@@ -139,6 +141,10 @@ type
     procedure DefineProperties(Filer: TFiler); override;
 
     procedure SetTransaction(const Value: IZTransaction);
+    /// <summary>Set a new connection.</summary>
+    /// <param>"Value" the IZTransaction object.</param>
+    procedure SetConnection(const Value: IZConnection);
+    function HasAutoCommitTransaction: Boolean;
     procedure CalculateDefaults(const Sender: IZCachedResultSet;
       const RowAccessor: TZRowAccessor);
     procedure PostUpdates(const Sender: IZCachedResultSet; UpdateType: TZRowUpdateType;
@@ -147,6 +153,9 @@ type
       Const OldRowAccessor, NewRowAccessor: TZRowAccessor; const Resolver: IZCachedResolver);
 
     procedure RefreshCurrentRow(const Sender: IZCachedResultSet; RowAccessor: TZRowAccessor);
+    /// <author>EgonHugeist</author>
+    /// <summary>Flush all cached statements</summary>
+    procedure FlushStatementCache;
 
     procedure Rebuild(SQLStrings: TZSQLStrings);
     procedure RebuildAll;
@@ -190,7 +199,7 @@ type
     property UseSequenceFieldForRefreshSQL:Boolean read FUseSequenceFieldForRefreshSQL write SetUseSequenceFieldForRefreshSQL;
 
 
-    property Params: TParams read FParams write SetParamsList stored False;
+    property Params: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF} read FParams write SetParamsList stored False;
     property ParamCheck: Boolean read FParamCheck write SetParamCheck default True;
     property MultiStatements: Boolean read FMultiStatements write SetMultiStatements default True;
 
@@ -242,15 +251,19 @@ begin
 
   FDeleteSQL := TZSQLStrings.Create;
   FDeleteSQL.OnChange := UpdateParams;
+  FDeleteSQL.Dataset := Self;
   FInsertSQL := TZSQLStrings.Create;
   FInsertSQL.OnChange := UpdateParams;
+  FInsertSQL.Dataset := Self;
   FModifySQL := TZSQLStrings.Create;
   FModifySQL.OnChange := UpdateParams;
+  FModifySQL.Dataset := Self;
 
   FRefreshSQL := TZSQLStrings.Create;
   FRefreshSQL.OnChange:= UpdateParams;
+  FRefreshSQL.Dataset := Self;
 
-  FParams := TParams.Create(Self);
+  FParams := {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF}.Create(Self);
   FParamCheck := True;
   FMultiStatements := True;
   for RowUpdateType := utModified to utDeleted do
@@ -262,21 +275,29 @@ end;
 }
 destructor TZUpdateSQL.Destroy;
 begin
-  FParams.Free;
-  FDeleteSQL.Free;
-  FInsertSQL.Free;
-  FModifySQL.Free;
-  FRefreshSQL.Free;
+  FreeAndNil(FParams);
+  FreeAndNil(FDeleteSQL);
+  FreeAndNil(FInsertSQL);
+  FreeAndNil(FModifySQL);
+  FreeAndNil(FRefreshSQL);
   {keep track we notify a possible opened DataSet.CachedResultSet about destruction
    else IntfAssign of FPC fails to clear the cached resolver of the CachedResultSet}
-  if Assigned(FDataSet) and (FDataSet is TZAbstractDataset) then
-    TZAbstractDataset(DataSet).UpdateObject := nil;
+  if Assigned(FDataSet) and (FDataSet is TZAbstractRWTxnUpdateObjDataSet) then
+    TZAbstractRWTxnUpdateObjDataSet(DataSet).UpdateObject := nil;
   inherited Destroy;
 end;
 
 {**
   Store the related dataset object for update sql editor
 }
+procedure TZUpdateSQL.SetConnection(const Value: IZConnection);
+begin
+  if FConnection <> Value then begin
+    FlushStatementCache;
+    FConnection := Value;
+  end;
+end;
+
 procedure TZUpdateSQL.SetDataset(Value: TDataset);
 begin
   FDataSet := Value;
@@ -298,6 +319,15 @@ begin
   else
     Result := FDeleteSQL;
   end;
+end;
+
+type TZProtectedAbstractRODataset = Class(TZAbstractRODataset);
+
+function TZUpdateSQL.HasAutoCommitTransaction: Boolean;
+begin
+  if (FTransaction <> nil)
+  then Result := FTransaction.GetAutoCommit
+  else Result := TZProtectedAbstractRODataset(Dataset).Connection.AutoCommit;
 end;
 
 {**
@@ -362,7 +392,7 @@ end;
   Set a new list of SQL parameters.
   @param Value a new list of SQL parameters.
 }
-procedure TZUpdateSQL.SetParamsList(Value: TParams);
+procedure TZUpdateSQL.SetParamsList(Value: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF});
 begin
   FParams.AssignValues(Value);
 end;
@@ -525,9 +555,9 @@ end;
 }
 procedure TZUpdateSQL.RebuildAll;
 var
-  OldParams: TParams;
+  OldParams: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF};
 begin
-  OldParams := TParams.Create;
+  OldParams := {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF}.Create;
   OldParams.Assign(FParams);
   FParams.Clear;
   try
@@ -544,19 +574,18 @@ begin
 end;
 
 procedure TZUpdateSQL.RefreshCurrentRow(const Sender: IZCachedResultSet; RowAccessor: TZRowAccessor);
-var
-    Config: TZSQLStrings;
+var Config: TZSQLStrings;
     Statement: IZPreparedStatement;
-    RefreshResultSet: IZResultSet;
 begin
- Config:=FRefreshSQL;
- if CONFIG.StatementCount=1 then
- begin
-  Statement := Sender.GetStatement.GetConnection.PrepareStatement(Config.Statements[0].SQL);
-  FillStatement(Sender, Statement, Config.Statements[0],RowAccessor, RowAccessor);
-  RefreshResultSet:=Statement.ExecuteQueryPrepared;
-  Apply_RefreshResultSet(Sender,RefreshResultSet,RowAccessor);
- end;
+  Config:=FRefreshSQL;
+  if CONFIG.StatementCount=1 then begin
+    if (FRefreshRS = nil) or (FRefreshRS.IsClosed)
+    then Statement := Sender.GetStatement.GetConnection.PrepareStatement(Config.Statements[0].SQL)
+    else FRefreshRS.GetStatement.QueryInterface(IZPreparedStatement, Statement);
+    FillStatement(Sender, Statement, Config.Statements[0],RowAccessor, RowAccessor);
+    FRefreshRS := Statement.ExecuteQueryPrepared;
+    Apply_RefreshResultSet(Sender, FRefreshRS, RowAccessor);
+  end;
 end;
 
 {**
@@ -572,7 +601,7 @@ procedure TZUpdateSQL.FillStatement(const ResultSet: IZCachedResultSet;
   OldRowAccessor, NewRowAccessor: TZRowAccessor);
 var
   I, ColumnIndex: Integer;
-  ParamValue: TParam;
+  ParamValue: {$IFNDEF DISABLE_ZPARAM}TZParam{$ELSE}TParam{$ENDIF};
   ParamName: string;
   OldParam: Boolean;
   WasNull: Boolean;
@@ -696,6 +725,18 @@ begin
   end;
 end;
 
+procedure TZUpdateSQL.FlushStatementCache;
+var RowUpdateType: TZRowUpdateType;
+begin
+  if FRefreshRS <> nil then begin
+    FRefreshRS.Close;
+    FRefreshRS := nil;
+  end;
+  for RowUpdateType := utModified to utDeleted do
+    if (FStmts[RowUpdateType] <> nil) then
+      FStmts[RowUpdateType].Clear;
+end;
+
 {**
   Apply the Refreshed values.
   @param RefreshResultSet a result set object.
@@ -802,6 +843,8 @@ begin
  {END PATCH [1214009] TZUpdateSQL - implemented feature to Calculate default values}
 end;
 
+type
+  TZProtectedAbstractRWTxnUpdateObjDataSet = Class(TZAbstractRWTxnUpdateObjDataSet);
 {**
   Posts updates to database.
   @param Sender a cached result set object.
@@ -814,6 +857,7 @@ procedure TZUpdateSQL.PostUpdates(const Sender: IZCachedResultSet;
 var
   I: Integer;
   Statement: IZPreparedStatement;
+  OrigStmt: IZStatement;
   Config: TZSQLStrings;
   CalcDefaultValues,
   ExecuteStatement,
@@ -821,6 +865,7 @@ var
   Tmp:String;
   lValidateUpdateCount : Boolean;
   lUpdateCount : Integer;
+  ADataSet: TZAbstractRWTxnUpdateObjDataSet;
 
   function SomethingChanged: Boolean;
   var I, J: Integer;
@@ -869,16 +914,28 @@ begin
       DoBeforeModifySQL;
     {$IFDEF WITH_CASE_WARNING}else;{$ENDIF}// do nothing
   end;
-
-  if Dataset is TZAbstractRODataset then
-    (Dataset as TZAbstractRODataset).Connection.ShowSqlHourGlass;
-  CalcDefaultValues := ZSysUtils.StrToBoolEx(DefineStatementParameter(Sender.GetStatement, DSProps_Defaults, 'true'));
+  ADataSet := DataSet as TZAbstractRWTxnUpdateObjDataSet;
+  TZProtectedAbstractRWTxnUpdateObjDataSet(ADataSet).Connection.ShowSqlHourGlass;
+  CalcDefaultValues := doCalcDefaults in ADataSet.Options;
   try
+    OrigStmt := Sender.GetStatement;
+    if not Assigned(OrigStmt) then begin
+      OrigStmt := ADataSet.DbcStatement;
+      if (OrigStmt = nil) and ADataSet.Active and TZProtectedAbstractRWTxnUpdateObjDataSet(ADataSet).TryKeepDataOnDisconnect then try
+        TZProtectedAbstractRWTxnUpdateObjDataSet(ADataSet).FRefreshInProgress := True;
+        TZProtectedAbstractRWTxnUpdateObjDataSet(ADataSet).InternalPrepare;
+        OrigStmt := ADataSet.DbcStatement;
+      finally
+        TZProtectedAbstractRWTxnUpdateObjDataSet(ADataSet).FRefreshInProgress := False;
+      end;
+    end;
+    if not Assigned(OrigStmt) then
+      raise Exception.Create('Could not determine a valid statement!');
     for I := 0 to Config.StatementCount - 1 do begin
       if (FStmts[UpdateType].Count <= i) or not (FStmts[UpdateType][i].QueryInterface(IZPreparedStatement, Statement) = S_OK) or
-         Statement.IsClosed or (Sender.GetStatement.GetParameters.Text <> Statement.GetParameters.Text) then begin
-        Statement := Sender.GetStatement.GetConnection.PrepareStatementWithParams(
-          Config.Statements[I].SQL, Sender.GetStatement.GetParameters);
+         Statement.IsClosed or (OrigStmt.GetParameters.Text <> Statement.GetParameters.Text) then begin
+        Statement := OrigStmt.GetConnection.PrepareStatementWithParams(
+          Config.Statements[I].SQL, OrigStmt.GetParameters);
         if (FStmts[UpdateType].Count <= i)
         then FStmts[UpdateType].Add(Statement)
         else FStmts[UpdateType][i] := Statement;
@@ -899,7 +956,7 @@ begin
       end;
       if ExecuteStatement then begin
         // if Property ValidateUpdateCount isn't set : assume it's true
-        Tmp := Sender.GetStatement.GetParameters.Values[DSProps_ValidateUpdateCount];
+        Tmp := OrigStmt.GetParameters.Values[DSProps_ValidateUpdateCount];
         lValidateUpdateCount := (Tmp = '') or StrToBoolEx(Tmp);
 
         lUpdateCount := Statement.ExecuteUpdatePrepared;
@@ -930,21 +987,14 @@ begin
           try
             Config:=FRefreshSQL;
             if (UpdateType = utInserted) then
-              if (Dataset is TZAbstractDataset) then
+              if (Dataset is TZAbstractRWTxnUpdateObjDataSet) then
                 if FUseSequenceFieldForRefreshSQL then
-                  if (TZAbstractDataset(DataSet).Sequence <> nil) and
-                     (TZAbstractDataset(DataSet).SequenceField<>'') then
+                  if (TZProtectedAbstractRWTxnUpdateObjDataSet(DataSet).Sequence <> nil) and
+                     (TZProtectedAbstractRWTxnUpdateObjDataSet(DataSet).SequenceField<>'') then
                     Config.Text := StringReplace(UpperCase(Config.Text),
-                      ':OLD_'+UpperCase(TZAbstractDataset(DataSet).SequenceField),
-                      TZAbstractDataset(DataSet).Sequence.GetCurrentValueSQL,[rfReplaceAll]);
-            if CONFIG.StatementCount = 1 then begin
-              if (FRefreshStmt = nil) or FRefreshStmt.IsClosed
-              then Statement := Sender.GetStatement.GetConnection.PrepareStatement(Config.Statements[0].SQL)
-              else Statement := FRefreshStmt;
-              FillStatement(Sender, Statement, Config.Statements[0],OldRowAccessor, NewRowAccessor);
-              FRefreshRS := Statement.ExecuteQueryPrepared;
-              Apply_RefreshResultSet(Sender,FRefreshRS,NewRowAccessor);
-            end;
+                      ':OLD_'+UpperCase(TZProtectedAbstractRWTxnUpdateObjDataSet(DataSet).SequenceField),
+                      TZProtectedAbstractRWTxnUpdateObjDataSet(DataSet).Sequence.GetCurrentValueSQL,[rfReplaceAll]);
+            RefreshCurrentRow(Sender, NewRowAccessor);
           finally
             FRefreshSQL.Text:=Tmp;
           end;
@@ -954,8 +1004,7 @@ begin
 //FOSPATCH
 
   finally
-    if Dataset is TZAbstractRODataset then
-      (Dataset as TZAbstractRODataset).Connection.HideSQLHourGlass;
+    TZProtectedAbstractRWTxnUpdateObjDataSet(ADataSet).Connection.HideSQLHourGlass;
   end;
 
   case UpdateType of

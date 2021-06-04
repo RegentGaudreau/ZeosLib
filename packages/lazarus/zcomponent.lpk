@@ -3,7 +3,6 @@
   <Package Version="4">
     <PathDelim Value="\"/>
     <Name Value="zcomponent"/>
-    <Type Value="RunAndDesignTime"/>
     <AddToProjectUsesSection Value="True"/>
     <CompilerOptions>
       <Version Value="11"/>
@@ -23,10 +22,9 @@
         <CustomOptions Value="-dZEOSDEBUG"/>
       </Other>
     </CompilerOptions>
-    <Description Value="Zeos Database Components
-"/>
-    <Version Major="7" Minor="3"/>
-    <Files Count="19">
+    <Description Value="Zeos Database Components"/>
+    <Version Major="8" Minor="0"/>
+    <Files Count="22">
       <Item1>
         <Filename Value="..\..\src\component\ZAbstractConnection.pas"/>
         <UnitName Value="ZAbstractConnection"/>
@@ -44,95 +42,103 @@
         <UnitName Value="ZAbstractTable"/>
       </Item4>
       <Item5>
-        <Filename Value="..\..\src\component\ZComponentReg.pas"/>
-        <HasRegisterProc Value="True"/>
-        <UnitName Value="ZComponentReg"/>
-      </Item5>
-      <Item6>
         <Filename Value="..\..\src\component\ZConnection.pas"/>
         <UnitName Value="ZConnection"/>
-      </Item6>
-      <Item7>
+      </Item5>
+      <Item6>
         <Filename Value="..\..\src\component\ZConnectionGroup.pas"/>
         <UnitName Value="ZConnectionGroup"/>
+      </Item6>
+      <Item7>
+        <Filename Value="..\..\src\component\ZDataset.pas"/>
+        <UnitName Value="ZDataset"/>
       </Item7>
       <Item8>
         <Filename Value="..\..\src\component\ZDatasetUtils.pas"/>
         <UnitName Value="ZDatasetUtils"/>
       </Item8>
       <Item9>
-        <Filename Value="..\..\src\component\ZGroupedConnection.pas"/>
-        <UnitName Value="ZGroupedConnection"/>
+        <Filename Value="..\..\src\component\ZEventListener.pas"/>
+        <UnitName Value="ZEventListener"/>
       </Item9>
       <Item10>
-        <Filename Value="..\..\src\component\ZIBEventAlerter.pas"/>
-        <UnitName Value="ZIBEventAlerter"/>
+        <Filename Value="..\..\src\component\ZFormatSettings.pas"/>
+        <UnitName Value="ZFormatSettings"/>
       </Item10>
       <Item11>
-        <Filename Value="..\..\src\component\ZPgEventAlerter.pas"/>
-        <UnitName Value="ZPgEventAlerter"/>
+        <Filename Value="..\..\src\component\ZGroupedConnection.pas"/>
+        <UnitName Value="ZGroupedConnection"/>
       </Item11>
       <Item12>
-        <Filename Value="..\..\src\component\ZSqlMetadata.pas"/>
-        <UnitName Value="ZSqlMetadata"/>
+        <Filename Value="..\..\src\component\ZIBEventAlerter.pas"/>
+        <UnitName Value="ZIBEventAlerter"/>
       </Item12>
       <Item13>
-        <Filename Value="..\..\src\component\ZSqlMonitor.pas"/>
-        <UnitName Value="ZSqlMonitor"/>
+        <Filename Value="..\..\src\component\ZMemTable.pas"/>
+        <UnitName Value="ZMemTable"/>
       </Item13>
       <Item14>
-        <Filename Value="..\..\src\component\ZSqlProcessor.pas"/>
-        <UnitName Value="ZSqlProcessor"/>
+        <Filename Value="..\..\src\component\ZPgEventAlerter.pas"/>
+        <UnitName Value="ZPgEventAlerter"/>
       </Item14>
       <Item15>
-        <Filename Value="..\..\src\component\ZSqlStrings.pas"/>
-        <UnitName Value="ZSqlStrings"/>
+        <Filename Value="..\..\src\component\ZSqlMetadata.pas"/>
+        <UnitName Value="ZSqlMetadata"/>
       </Item15>
       <Item16>
-        <Filename Value="..\..\src\component\ZSqlUpdate.pas"/>
-        <UnitName Value="ZSqlUpdate"/>
+        <Filename Value="..\..\src\component\ZSqlMonitor.pas"/>
+        <UnitName Value="ZSqlMonitor"/>
       </Item16>
       <Item17>
-        <Filename Value="..\..\src\component\ZStoredProcedure.pas"/>
-        <UnitName Value="ZStoredProcedure"/>
+        <Filename Value="..\..\src\component\ZSqlProcessor.pas"/>
+        <UnitName Value="ZSqlProcessor"/>
       </Item17>
       <Item18>
-        <Filename Value="..\..\src\component\ZUpdateSqlEditor.pas"/>
-        <UnitName Value="ZUpdateSqlEditor"/>
+        <Filename Value="..\..\src\component\ZSqlStrings.pas"/>
+        <UnitName Value="ZSqlStrings"/>
       </Item18>
       <Item19>
-        <Filename Value="..\..\src\component\ZPropertiesEditor.pas"/>
-        <UnitName Value="ZPropertiesEditor"/>
+        <Filename Value="..\..\src\component\ZSqlUpdate.pas"/>
+        <UnitName Value="ZSqlUpdate"/>
       </Item19>
+      <Item20>
+        <Filename Value="..\..\src\component\ZStoredProcedure.pas"/>
+        <UnitName Value="ZStoredProcedure"/>
+      </Item20>
+      <Item21>
+        <Filename Value="..\..\src\component\ZDatasetParam.pas"/>
+        <UnitName Value="ZDatasetParam"/>
+      </Item21>
+      <Item22>
+        <Filename Value="..\..\src\component\ZTransaction.pas"/>
+        <UnitName Value="ZDatasetParam"/>
+      </Item22>
     </Files>
-    <RequiredPkgs Count="6">
+    <RequiredPkgs Count="5">
       <Item1>
         <PackageName Value="zplain"/>
-        <MaxVersion Major="7" Minor="2"/>
-        <MinVersion Major="7" Minor="3" Valid="True"/>
+        <MaxVersion Major="8" Minor="0"/>
+        <MinVersion Major="8" Minor="0" Valid="True"/>
       </Item1>
       <Item2>
         <PackageName Value="zparsesql"/>
-        <MaxVersion Major="7" Minor="3"/>
-        <MinVersion Major="7" Minor="3" Valid="True"/>
+        <MaxVersion Major="8" Minor="0"/>
+        <MinVersion Major="8" Minor="0" Valid="True"/>
       </Item2>
       <Item3>
         <PackageName Value="zdbc"/>
-        <MaxVersion Major="7" Minor="2"/>
-        <MinVersion Major="7" Minor="3" Valid="True"/>
+        <MaxVersion Major="8" Minor="0"/>
+        <MinVersion Major="8" Minor="0" Valid="True"/>
       </Item3>
       <Item4>
         <PackageName Value="zcore"/>
-        <MaxVersion Major="7" Minor="3"/>
-        <MinVersion Major="7" Minor="3" Valid="True"/>
+        <MaxVersion Major="8" Minor="0"/>
+        <MinVersion Major="8" Minor="0" Valid="True"/>
       </Item4>
       <Item5>
-        <PackageName Value="IDEIntf"/>
-      </Item5>
-      <Item6>
         <PackageName Value="FCL"/>
         <MinVersion Major="1" Valid="True"/>
-      </Item6>
+      </Item5>
     </RequiredPkgs>
     <UsageOptions>
       <UnitPath Value="$(PkgOutDir)"/>

@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -55,7 +55,8 @@ interface
 
 {$I ZComponent.inc}
 
-uses ZAbstractRODataset, ZAbstractDataset, ZAbstractTable {$IFDEF OLDFPC}, DB {$ENDIF};
+uses ZAbstractRODataset, ZAbstractDataset, ZAbstractTable, ZMemTable
+  {$IFDEF OLDFPC}, DB {$ENDIF};
 
 type
 
@@ -76,10 +77,11 @@ type
     property LinkedFields; {renamed by bangfauzan}
     property IndexFieldNames; {bangfauzan addition}
     property Options default [doPreferPrepared];
+    property Transaction;
   end;
 
   {** Implements an universal SQL query for read/write data access. }
-  TZQuery = class (TZAbstractDataSet)
+  TZQuery = class (TZAbstractRWTxnUpdateObjDataSet)
   published
     property Active;
     property ReadOnly default False;
@@ -97,9 +99,9 @@ type
     property IndexFieldNames; {bangfauzan addition}
     property UpdateMode;
     property WhereMode;
-    property Options default [doCalcDefaults, doPreferPrepared];
     property Sequence;
     property SequenceField;
+    property TryKeepDataOnDisconnect default False;
   end;
 
   {** Implements an universal SQL query for single table access. }
@@ -119,12 +121,32 @@ type
     property IndexFieldNames; {bangfauzan addition}
     property UpdateMode;
     property WhereMode;
-    property Options default [doCalcDefaults, doPreferPrepared];
     property Sequence;
-    property SequenceField;
+    property TryKeepDataOnDisconnect default False;
   end;
 
+  /// <author>EgonHugeist.</author>
+  /// <summary>Implements an InMemory Table object.</summary>
+  TZMemTable = class(TZAbstractMemTable)
+  public
+    Destructor Destroy; Override;
+  published
+    property IndexFieldNames; {bangfauzan addition}
+  end;
+
+const
+  Zeos80 = true;
+
 implementation
+
+{ TZMemTable }
+
+Destructor TZMemTable.Destroy;
+Begin
+  If Self.Active Then
+    Self.Close;
+  inherited;
+End;
 
 end.
 

@@ -84,6 +84,7 @@ type
     procedure Test_Mantis0000229;
     procedure Test_TrailingSpaces;
     procedure Test_ForeignKeyViolation;
+    procedure TestMichlsBCDs_A;
   end;
 
   TZTestDbcPostgreSQLBugReportMBCs = class(TZAbstractDbcSQLTestCaseMBCs)
@@ -97,7 +98,8 @@ type
 implementation
 {$IFNDEF ZEOS_DISABLE_POSTGRESQL}
 
-uses SysUtils, ZSysUtils, ZTestCase, ZDbcPostgreSqlUtils, ZEncoding;
+uses SysUtils, FmtBCD,
+  ZSysUtils, ZTestCase, ZDbcPostgreSqlUtils, ZEncoding;
 
 { TZTestDbcPostgreSQLBugReport }
 
@@ -593,6 +595,28 @@ begin
 
   Statement.ExecuteQuery('select * from people where p_id=1');
 end;
+
+{$IFDEF FPC}{$PUSH} {$WARN 5057 off : Local variable "ABCD" does not seem to be initialized}{$ENDIF}
+procedure TZTestDbcPostgreSQLBugReport.TestMichlsBCDs_A;
+var ResultSet: IZResultSet;
+    Statement: IZStatement;
+    ABCD: TBCD;
+    AID: Integer;
+begin
+  //if SkipForReason(srClosedBug) then Exit;
+
+  Statement := Connection.CreateStatement;
+  ResultSet := Statement.ExecuteQuery('select id, val1 from TableTestMichlsBCDs order by id');
+  Check(ResultSet <> nil); //dummy check for fpc
+  while ResultSet.Next do begin
+    AID := ResultSet.GetInt(FirstDbcIndex);
+    ResultSet.GetbigDecimal(FirstDbcIndex+1, ABCD);
+    Check(ABCD.Precision >= ABCD.SignSpecialPlaces,'BCD Precsion must be gte SignSpecialPlaces');
+    CheckEquals(AID, Integer(ABCD.Precision), 'the BCD Precsion is not left packet');
+  end;
+  Statement.Close;
+end;
+{$IFDEF FPC}{$POP}{$ENDIF}
 
 {**
   Test the bug report #1014416

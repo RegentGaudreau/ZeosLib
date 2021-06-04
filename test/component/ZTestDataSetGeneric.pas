@@ -57,7 +57,8 @@ interface
 uses
   Classes, DB, {$IFDEF FPC}testregistry{$ELSE}TestFramework{$ENDIF}, SysUtils,
   ZDataset, ZConnection, ZDbcIntfs, ZSqlTestCase, ZCompatibility, ZVariant,
-  ZAbstractRODataset, ZMessages, ZStoredProcedure;
+  ZAbstractRODataset, ZMessages, ZStoredProcedure, ZMemTable, ZSqlMonitor
+  {$IFNDEF DISABLE_ZPARAM}{$IFNDEF FPC}, Types{$ENDIF}, ZDbcUtils{$ENDIF};
 
 type
   {** Implements a test case for . }
@@ -68,9 +69,12 @@ type
   private
     FQuery: TZQuery;
     FFieldList: string;
+    FLogMessage: String;
+    procedure OnTraceEvent_lcBindPrepStmt(Sender: TObject; Event: TZLoggingEvent;
+      var LogTrace: Boolean);
     procedure RunDefineFields;
     procedure RunDefineSortedFields;
-    procedure TestReadCachedLobs(const BinLob: String; aOptions: TZDataSetOptions;
+    procedure TestReadLobCacheMode(const BinLob: String; aOptions: TZDataSetOptions;
       BinStreamE: TMemoryStream; Query: TZAbstractRODataset);
   protected
     procedure TestQueryGeneric(Query: TDataset);
@@ -104,7 +108,7 @@ type
     procedure TestClobEmptyString;
     procedure TestLobModes;
     procedure TestSpaced_Names;
-    procedure Test_doCachedLobs;
+    procedure Test_LobCacheMode;
     procedure TestDefineFields;
     procedure TestDefineSortedFields;
     procedure TestEmptyMemoAfterFullMemo;
@@ -113,6 +117,9 @@ type
     procedure TestVeryLargeBlobs;
     procedure TestKeyWordParams;
     procedure TestOldValue;
+    procedure TestCloseOnDisconnect;
+    procedure TestClearParametersAndLoggedValues;
+    procedure TestAssignDBRTLParams;
   end;
 
   {$IF not declared(TTestMethod)}
@@ -155,16 +162,50 @@ type
   end;
   {$ENDIF}
 
+  {$IFNDEF DISABLE_ZPARAM}
+  TZTestBatchDML = class(TZAbstractCompSQLTestCase)
+  private
+    procedure InternalTestArrayBinding(Query: TZQuery; FirstID, ArrayLen, LastFieldIndex: Integer);
+  published
+    procedure TestBatchDMLArrayBindings;
+  end;
+  {$ENDIF DISABLE_ZPARAM}
+
+  TZAbstractTestMemTable = class(TZAbstractCompSQLTestCase)
+  protected
+    function CreateTable: TZMemTable;
+    class function GetWithConnection: Boolean; virtual; abstract;
+  published
+    procedure Test_aehimself_1;
+  end;
+
+  TZTestMemTableWithConnection = class(TZAbstractTestMemTable)
+  protected
+    class function GetWithConnection: Boolean; override;
+  published
+    procedure Test_CloneDataFrom_people;
+    procedure Test_CloneDataFrom_people_no_Connection;
+    procedure Test_CloneDataFrom_equipment_filtered;
+    procedure Test_AssignDataFrom_people_table;
+  end;
+
+  TZTestMemTableWithoutConnection = class(TZAbstractTestMemTable)
+  protected
+    class function GetWithConnection: Boolean; override;
+  published
+    procedure Test_miab3_1;
+  end;
+
 implementation
 
 uses
 {$IFNDEF VER130BELOW}
   Variants,
-{$ENDIF}
+{$ENDIF} FmtBCD, DateUtils, strutils{$IFDEF WITH_UNITANSISTRINGS}, AnsiStrings{$ENDIF},
   ZEncoding, ZFastCode,
-  DateUtils, ZSysUtils, ZTestConsts, ZTestCase, ZDbcProperties,
-  ZDatasetUtils, strutils{$IFDEF WITH_UNITANSISTRINGS}, AnsiStrings{$ENDIF},
-  TypInfo, ZDbcInterbaseFirebirdMetadata;
+  ZSysUtils, ZTestConsts, ZTestCase, ZDbcProperties, ZDbcLogging,
+  ZDatasetUtils, ZSqlUpdate, {$IFNDEF DISABLE_ZPARAM}ZDatasetParam,{$ENDIF}
+  TypInfo, ZDbcInterbaseFirebirdMetadata, ZSelectSchema;
 
 { TZGenericTestDataSet }
 
@@ -401,6 +442,7 @@ begin
       if ( Connection.ControlsCodePage = cCP_UTF16 ) then
       begin
         StrStream.position := 0;
+        Ansi := '';
         SetLength(Ansi,StrStream.Size);
         StrStream.Read(PAnsiChar(Ansi)^, StrStream.Size);
         WS := {$IFDEF FPC}UTF8Decode{$ELSE}UTF8ToString{$ENDIF}(Ansi);
@@ -620,7 +662,7 @@ type
   TZAbstractRODatasetHack = class(TZAbstractRODataset)
   end;
 
-procedure TZGenericTestDataSet.TestReadCachedLobs(const BinLob: String;
+procedure TZGenericTestDataSet.TestReadLobCacheMode(const BinLob: String;
   aOptions: TZDataSetOptions; BinStreamE: TMemoryStream; Query: TZAbstractRODataset);
 var
   BinStreamA: TMemoryStream;
@@ -814,6 +856,7 @@ begin
       //a WiteString-Stream. So this test must be modified...
       if ( Connection.ControlsCodePage = cCP_UTF16 ) then
       begin
+        Ansi := '';
         SetLength(Ansi,StrStream.Size);
         StrStream.Read(PAnsiChar(Ansi)^, StrStream.Size);
         WS := {$IFDEF FPC}UTF8Decode{$ELSE}UTF8ToString{$ENDIF}(Ansi);
@@ -1456,7 +1499,7 @@ end;
 procedure TZGenericTestDataSet.TestDecodingSortedFields;
 var
   Query: TZReadOnlyQuery;
-  FieldRefs: TObjectDynArray;
+  FieldRefs: TZFieldsLookUpDynArray;
   FieldComparsionKinds: TComparisonKindArray;
   OnlyDataFields: Boolean;
 begin
@@ -1467,7 +1510,7 @@ begin
 
     DefineSortedFields(Query, 'p_id', FieldRefs, FieldComparsionKinds, OnlyDataFields);
     CheckEquals(1, Length(FieldRefs));
-    CheckEquals(Integer(Query.Fields[0]), Integer(FieldRefs[0]));
+    Check(Pointer(Query.Fields[0]) = FieldRefs[0].Field);
     CheckEquals(1, Length(FieldComparsionKinds));
     CheckEquals(Ord(ckAscending), Ord(FieldComparsionKinds[0]));
     CheckEquals(True, OnlyDataFields);
@@ -1475,8 +1518,8 @@ begin
     DefineSortedFields(Query, 'p_id ASC, p_name DESC', FieldRefs,
       FieldComparsionKinds, OnlyDataFields);
     CheckEquals(2, Length(FieldRefs));
-    CheckEquals(Integer(Query.Fields[0]), Integer(FieldRefs[0]));
-    CheckEquals(Integer(Query.Fields[2]), Integer(FieldRefs[1]));
+    Check(Pointer(Query.Fields[0]) = FieldRefs[0].Field);
+    Check(Pointer(Query.Fields[2]) = FieldRefs[1].Field);
     CheckEquals(2, Length(FieldComparsionKinds));
     CheckEquals(Ord(ckAscending), Ord(FieldComparsionKinds[0]));
     CheckEquals(Ord(ckDescending), Ord(FieldComparsionKinds[1]));
@@ -1700,7 +1743,7 @@ begin
   end;
 end;
 
-procedure TZGenericTestDataSet.Test_doCachedLobs;
+procedure TZGenericTestDataSet.Test_LobCacheMode;
 var
   Query: TZQuery;
   ROQuery: TZReadOnlyQuery;
@@ -1761,11 +1804,17 @@ begin
       ExecSQL;
       CheckEquals(1, RowsAffected);
     end;
-    TestReadCachedLobs(BinLob, aOptions, BinStreamE, Query);
-    TestReadCachedLobs(BinLob, aOptions, BinStreamE, ROQuery);
-    Include(aOptions, doCachedLobs);
-    TestReadCachedLobs(BinLob, aOptions, BinStreamE, Query);
-    TestReadCachedLobs(BinLob, aOptions, BinStreamE, ROQuery);
+    TestReadLobCacheMode(BinLob, aOptions, BinStreamE, Query);
+    TestReadLobCacheMode(BinLob, aOptions, BinStreamE, ROQuery);
+    Query.Properties.Values[DSProps_LobCacheMode] := LcmOnLoadStr;
+    ROQuery.Properties.Values[DSProps_LobCacheMode] := LcmOnLoadStr;
+    TestReadLobCacheMode(BinLob, aOptions, BinStreamE, Query);
+    TestReadLobCacheMode(BinLob, aOptions, BinStreamE, ROQuery);
+    Query.Properties.Values[DSProps_LobCacheMode] := LcmOnAccessStr;
+    ROQuery.Properties.Values[DSProps_LobCacheMode] := LcmOnAccessStr;
+    TestReadLobCacheMode(BinLob, aOptions, BinStreamE, Query);
+    TestReadLobCacheMode(BinLob, aOptions, BinStreamE, ROQuery);
+
   finally
     FreeAndNil(BinStreamE);
     Query.SQL.Text := 'DELETE FROM blob_values where b_id >= '+ SysUtils.IntToStr(TEST_ROW_ID-1);
@@ -1986,6 +2035,226 @@ begin
   end;
 end;
 
+(*
+Some third party components using TParam. Let's test assign to TZParams.
+  Miab3 did report exeptions if doing that.
+*)
+{$IFDEF FPC} {$PUSH} {$WARN 5057 off : Local variable "ABCD" does not seem to be initialized} {$ENDIF}
+procedure TZGenericTestDataSet.TestAssignDBRTLParams;
+var Params: TParams;
+    Query, Query2: TZQuery;
+    Param: TParam;
+    ABCD: TBCD;
+    Bts, Bts2: TBytes;
+    ANow: TDateTime;
+    I: Integer;
+    B: Boolean;
+    {$IFNDEF TBLOBDATA_IS_TBYTES}
+    BlobData: TBlobData;
+    {$ENDIF}
+begin
+  Query := CreateQuery;
+  Params := nil;
+  Check(Query <> nil);
+  Bts := nil;
+  Bts2 := nil;
+  Query2 := nil;
+  try
+    Connection.Connect;
+    Connection.ExecuteDirect('delete from high_load where 1=1');
+    Query.SQL.Text := 'insert into high_load (hl_id, stBoolean, stByte, stShort,'+
+      'stInteger, stLong, stFloat, stDouble, stBigDecimal, stString, stUnicodeString, '+
+      'stBytes, stDate, stTime, stTimestamp, stGUID, stAsciiStream, stUnicodeStream, stBinaryStream)' +
+      ' VALUES (:hl_id, :stBoolean, :stByte, :stShort,'+
+      ':stInteger, :stLong, :stFloat, :stDouble, :stBigDecimal, :stString, :stUnicodeString, '+
+      ':stBytes, :stDate, :stTime, :stTimestamp, :stGUID, :stAsciiStream, :stUnicodeStream, :stBinaryStream)';
+    Params := TParams.Create(nil);
+    Param := Params.CreateParam(ftInteger, 'hl_id', ptInput);
+    Param.AsInteger := 100;
+    Param := Params.CreateParam(ftBoolean, 'stBoolean', ptInput);
+    Param.AsBoolean := False;
+    Param := Params.CreateParam({$IFDEF WITH_FTBYTE}ftByte{$ELSE}ftWord{$ENDIF}, 'stByte', ptInput);
+    Param.{$IFDEF WITH_FTBYTE}AsByte{$ELSE}AsWord{$ENDIF} := 1;
+    Param := Params.CreateParam({$IFDEF WITH_FTSHORTINT}ftShortInt{$ELSE}ftSmallInt{$ENDIF}, 'stShort', ptInput);
+    Param.{$IFDEF WITH_FTSHORTINT}AsShortInt{$ELSE}AsSmallInt{$ENDIF} := 1;
+    Param := Params.CreateParam(ftInteger, 'stInteger', ptInput);
+    Param.AsInteger := 1;
+    Param := Params.CreateParam(ftLargeInt, 'stLong', ptInput);
+    Param.{$IFDEF WITH_PARAM_ASLARGEINT}AsLargeInt{$ELSE}Value{$ENDIF} := Int64(1);
+    Param := Params.CreateParam({$IFDEF WITH_FTSINGLE}DB.ftSingle{$ELSE}ftFloat{$ENDIF}, 'stFloat', ptInput);
+    Param.{$IFDEF WITH_FTSINGLE}AsSingle{$ELSE}AsFloat{$ENDIF} := 1;
+    Param := Params.CreateParam(ftFloat, 'stDouble', ptInput);
+    Param.AsFloat := 1;
+    Param := Params.CreateParam(ftFMTBcd, 'stBigDecimal', ptInput);
+    FillChar(ABCD, SizeOf(ABCD), #0);
+    ABCD.Precision := 1;
+    ABCD.Fraction[0] := 1 shl 4;
+    Param.AsFMTBCD := ABCD;
+    Param := Params.CreateParam(ftString, 'stString', ptInput);
+    Param.AsString := 'ABCDEFG';
+    Param := Params.CreateParam(ftWideString, 'stUnicodeString', ptInput);
+    Param.AsString := 'ABCDEFG';
+    Param := Params.CreateParam(ftBytes, 'stBytes', ptInput);
+    SetLength(Bts, 100);
+    {$IFDEF TPARAM_HAS_ASBYTES}
+    Param.AsBytes := Bts;
+    {$ELSE}
+    Param.Value := ZSysUtils.BytesToVar(Bts);
+    {$ENDIF}
+    Param := Params.CreateParam(ftTime, 'stDate', ptInput);
+    ANow := EncodeDate(2021,4,28)+EncodeTime(4,4,4,0);
+    Param.AsDate := Int(ANow);
+    Param := Params.CreateParam(ftDate, 'stTime', ptInput);
+    Param.AsTime := Frac(ANow);
+    Param := Params.CreateParam(ftDateTime, 'stTimestamp', ptInput);
+    Param.AsDateTime := ANow;
+    Param := Params.CreateParam(ftGUID, 'stGUID', ptInput);
+    Param.AsString := '{BC89E8C9-264E-4A8E-A19B-C38DAE5B5463}';
+    Param := Params.CreateParam(ftMemo, 'stAsciiStream', ptInput);
+    Param.AsString := 'XYZ';
+    Param := Params.CreateParam({$IFDEF WITH_WIDEMEMO}ftWideMemo{$ELSE}ftMemo{$ENDIF}, 'stUnicodeStream', ptInput);
+    Param.AsString := 'XYZ';
+    Param := Params.CreateParam(ftBlob, 'stBinaryStream', ptInput);
+    {$IFDEF TPARAM_HAS_ASBYTES}
+    Param.AsBytes := Bts;
+    {$ELSE}
+    Param.Value := ZSysUtils.BytesToVar(Bts);
+    {$ENDIF}
+    Query.Params.Assign(Params);
+    CheckEquals(19, Query.Params.Count);
+    Query.ExecSQL;
+    CheckEquals(1, Query.RowsAffected, 'The update count');
+    Query2 := CreateQuery;
+    Query2.SQL.Text := 'select * from high_load where hl_id = :hl_id';
+    for B := false to true do begin
+      Query2.Params[0].AsInteger := 100 + Ord(B);
+      Query2.Open;
+      CheckEquals(100 + Ord(B), Query2.Fields[0].AsInteger, 'the Value of hl_id field');
+      if Query2.Fields[1].DataType = ftBoolean
+      then CheckEquals(Ord(B), Integer(Query2.Fields[1].AsBoolean), 'the Value of stBoolean field')
+      else CheckEquals(Ord(B), Query2.Fields[1].AsInteger, 'the Value of stBoolean field');
+      CheckEquals(1, Query2.Fields[2].AsInteger, 'the Value of stByte field');
+      CheckEquals(1, Query2.Fields[3].AsInteger, 'the Value of stShort field');
+      CheckEquals(1, Query2.Fields[4].AsInteger, 'the Value of stInteger field');
+      CheckEquals(1, Query2.Fields[5].{$IFDEF TFIELD_HAS_ASLARGEINT}AsLargeInt{$ELSE}AsInteger{$ENDIF}, 'the Value of stLong field');
+      CheckEquals(1, Query2.Fields[6].{$IFDEF WITH_FTSINGLE}AsSingle{$ELSE}AsFloat{$ENDIF}, 'the Value of stSingle field');
+      CheckEquals(1, Query2.Fields[7].AsFloat, 'the Value of stDouble field');
+      CheckEquals(1, Query2.Fields[8].{$IFDEF TFIELD_HAS_ASLARGEINT}AsLargeInt{$ELSE}AsInteger{$ENDIF}, 'the Value of stBigDecimal field');
+      CheckEquals('ABCDEFG', Query2.Fields[9].AsString, 'the Value of stString field');
+      CheckEquals('ABCDEFG', Query2.Fields[10].AsString, 'the Value of stUnicodeString field');
+      if Connection.DbcConnection.GetServerProvider = spPostgreSQL //postgres simply has not varbinary field just the <=1GB beatea type
+      then CheckEquals(ftBlob, Query2.Fields[11].DataType, 'the DataType of stBytes field')
+      else CheckEquals(ftVarBytes, Query2.Fields[11].DataType, 'the DataType of stBytes field');
+      {$IFDEF TFIELD_HAS_ASBYTES}
+      Bts2 := Query2.Fields[11].AsBytes;
+      {$ELSE}
+        {$IFNDEF TBLOBDATA_IS_TBYTES}
+      if Connection.DbcConnection.GetServerProvider = spPostgreSQL then begin
+        BlobData := Query2.Fields[11].AsString;
+        Bts2 := BufferToBytes(Pointer(BlobData), Length(BlobData));
+      end else
+        {$ENDIF}
+        Bts2 := VarToBytes(Query2.Fields[11].Value);
+      {$ENDIF}
+      CheckEquals(Bts, Bts2, 'the Value of stBytes field');
+      CheckEqualsDate(Int(ANow), Query2.Fields[12].AsDateTime, [], 'the Value of sDate field');
+      CheckEqualsDate(Frac(ANow), Query2.Fields[13].AsDateTime, [], 'the Value of sTime field');
+      CheckEqualsDate(ANow, Query2.Fields[14].AsDateTime, [], 'the Value of sTimestamp field');
+      CheckEquals('{BC89E8C9-264E-4A8E-A19B-C38DAE5B5463}', Query2.Fields[15].AsString, 'the Value of stGUID field');
+      CheckEquals('XYZ', Query2.Fields[16].AsString, 'the Value of stAsciiStream field');
+      CheckEquals('XYZ', Query2.Fields[17].AsString, 'the Value of stUnicodeStream field');
+      {$IFDEF TFIELD_HAS_ASBYTES}
+      Bts2 := Query2.Fields[18].AsBytes;
+      {$ELSE}
+        {$IFDEF TBLOBDATA_IS_TBYTES}
+        Bts2 := VarToBytes(Query2.Fields[18].Value);
+        {$ELSE}
+        BlobData := Query2.Fields[18].AsString;
+        Bts2 := BufferToBytes(Pointer(BlobData), Length(BlobData));
+        {$ENDIF}
+      {$ENDIF}
+      CheckEquals(Bts, Bts2, 'the Value of stBinaryStream field');
+      CheckFalse(Query2.Eof);
+      if not B then begin
+        Query.Params[0].Value := Integer(101);
+        Query.Params[1].Value := True;
+        for i := 2 to 18 do
+          Query.Params[I].Value := Query2.Fields[i].Value;
+        Query.ExecSQL;
+        CheckEquals(1, Query.RowsAffected, 'The update count');
+      end;
+      Query2.Close;
+    end;
+  finally
+    FreeAndNil(Query);
+    if Params <> nil then
+      FreeAndNil(Params);
+    if Query2 <> nil then
+      FreeAndNil(Query2);
+
+    Connection.ExecuteDirect('delete from high_load where 1=1');
+  end;
+end;
+{$IFDEF FPC} {$POP} {$ENDIF}
+
+(*
+See: https://zeoslib.sourceforge.io/viewtopic.php?f=50&p=171617#p171617
+*)
+procedure TZGenericTestDataSet.TestClearParametersAndLoggedValues;
+var Query: TZQuery;
+    Monitor: TZSQLMonitor;
+    Param: {$IFNDEF DISABLE_ZPARAM}TZParam{$ELSE}TParam{$ENDIF};
+const
+  si_id: Integer = TEST_ROW_ID;
+  stSearch: String = '549';
+  siSearch: Integer = 549;
+begin
+  Query := CreateQuery;
+  Check(Query <> nil);
+  Monitor := TZSQLMonitor.Create(nil);
+  try
+    Connection.Connect;
+    Check(Connection.Connected);
+    Query.SQL.Text := 'insert into cargo(c_id, c_name, c_width, c_height) values (:c_id, :c_name, :c_width, :c_height)';
+    CheckEquals(4, Query.params.Count, 'The parameter count doesn''t match');
+    Query.Params.Clear;
+    CheckEquals(0, Query.params.Count, 'The parameter count doesn''t match');
+    Param := Query.Params.CreateParam(ftInteger, 'c_id', ptInput); //integer field
+    Check(Param <> nil);
+    Param.Value := si_id;
+    Param := Query.Params.CreateParam(ftString, 'c_name', ptInput); //char/varchar field
+    Check(Param <> nil);
+    Param.Value := stSearch;
+    Param := Query.Params.CreateParam(ftString{keep it! see below}, 'c_width', ptInput); //integer field
+    Check(Param <> nil);
+    Param.Value := siSearch;
+    Param := Query.Params.CreateParam(ftInteger, 'c_height', ptInput); //integer field
+    Check(Param <> nil);
+    Param.Value := siSearch;
+    Monitor.OnTrace := OnTraceEvent_lcBindPrepStmt;
+    Try
+      Monitor.Active := True;
+      FLogMessage := '';
+      Query.ExecSQL;
+    Finally
+      Connection.ExecuteDirect('delete from cargo where c_id = '+ZFastCode.IntToStr(si_id));
+      Monitor.Active := False;
+    End;
+    Check(FLogMessage <> '');
+    FLogMessage := Copy(FLogMessage, ZFastCode.Pos(':', FLogMessage)+1, Length(FLogMessage));
+    FLogMessage := Trim(FLogMessage);
+    if (Connection.DbcConnection.GetServerProvider in [spPostgreSQL{does not describe the params by default},
+      { those can't describe params except MSSQL <> FreeTDS}
+      spSQLite, spMySQL, spOracle, spASE, spMSSQL, spASA]) and (System.Pos('ado', Protocol) = 0) and
+      (System.Pos('odbc', Protocol) = 0) and (System.Pos('OleDB', Protocol) = 0)
+    then CheckEquals('32767,'''+stSearch+''','''+stSearch+''','+stSearch, FLogMessage)
+    else CheckEquals('32767,'''+stSearch+''','+stSearch+','+stSearch, FLogMessage);
+  finally
+    FreeAndNil(Monitor);
+    FreeAndNil(Query);
+  end;
+end;
+
 procedure TZGenericTestDataSet.TestClobEmptyString;
 var
   Query: TZQuery;
@@ -2051,6 +2320,155 @@ begin
       Query.ExecSQL;
     finally
       Query.Free;
+    end;
+  end;
+end;
+
+procedure TZGenericTestDataSet.TestCloseOnDisconnect;
+var Query: TZQuery;
+   NewConnection: TZConnection;
+   UpdateSQL: TZUpdateSQL;
+begin
+  Query := CreateQuery;
+  NewConnection := CreateDatasetConnection;
+  UpdateSQL := TZUpdateSQL.Create(Connection);
+  try
+    Query.Properties.Values[DSProps_LobCacheMode] := LcmOnLoadStr;
+    Query.SQL.Text := 'select * from people';
+    Query.TryKeepDataOnDisconnect := True;
+    Query.Open;
+    Query.FetchAll;
+    Query.Connection := nil;
+    Check(Query.Active, 'Query should be active');
+    Query.First;
+    Query.Last;
+    Check(Query.LastRowFetched);
+    Query.Close;
+    Check(Query.TryKeepDataOnDisconnect);
+    CheckFalse(Query.Active, 'Query should be inactive');
+    try
+      Query.Open;
+    Except
+      on E:Exception do
+        CheckNotTestFailure(E, 'Connection is not assigned');
+    end;
+    CheckFalse(Query.Active);
+    Query.Connection := Connection;
+    Check(Query.TryKeepDataOnDisconnect);
+    Query.Open;
+    //{$IFDEF WITH_DATASET_DefaultBufferCount}Check{$ELSE}CheckFalse{$ENDIF}(Query.TryKeepDataOnDisconnect); //FPC loads 10 rows on internal open once but we have 8 rows only
+    Query.FetchAll;
+    Check(Query.TryKeepDataOnDisconnect);
+    Query.CachedUpdates := True;
+    Query.Connection := nil;
+    Check(Query.Active);
+    Query.Append;
+    Query.Fields[0].AsInteger := TEST_ROW_ID-1;
+    Query.Post;
+    Check(Query.Active);
+    Query.Append;
+    Query.Fields[0].AsInteger := TEST_ROW_ID;
+    Query.Post;
+    Check(Query.Active);
+    try
+      Query.ApplyUpdates;
+    Except
+      on E:Exception do
+        CheckNotTestFailure(E, 'Connection is not assigned');
+    end;
+    Check(Query.Active);
+    Query.CommitUpdates;
+    CheckFalse(Query.UpdatesPending);
+    Query.Append;
+    Query.Fields[0].AsInteger := TEST_ROW_ID-1;
+    Query.Post;
+    Check(Query.Active);
+    Query.Append;
+    Query.Fields[0].AsInteger := TEST_ROW_ID;
+    Query.Post;
+    Check(Query.Active);
+    Query.Connection := Connection;
+    Connection.StartTransaction;
+    try
+      Query.ApplyUpdates;
+    finally
+      Connection.Rollback;
+    end;
+    Query.Connection := nil;
+    Query.Close;
+    Query.Unprepare;
+    { now test interchange the connection }
+    Query.Connection := Connection;
+    Query.Open;
+    Check(Query.Active, 'Query should be active');
+    Query.FetchAll;
+    Query.CachedUpdates := False;
+    Query.Connection := nil;
+    Query.Append;
+    Query.Fields[0].AsInteger := TEST_ROW_ID-1;
+    try
+      Query.Post;
+    except
+      on E:Exception do
+        CheckNotTestFailure(E, 'Connection is not assigned');
+    end;
+    Query.Connection := Connection;
+    Query.Post;
+    Query.Delete;
+    Connection.Connected := False;
+    Check(Query.Active);
+    Query.Connection := nil;
+    Check(Query.Active);
+    Query.Append;
+    Query.Fields[0].AsInteger := TEST_ROW_ID-1;
+    try
+      Query.Post;
+    except
+      on E:Exception do
+        CheckNotTestFailure(E, 'Connection is not assigned');
+    end;
+    Connection.Disconnect;
+    Query.Connection := NewConnection;
+    Query.Post;
+    Query.Delete;
+    Query.Close;
+    Query.Connection := Connection;
+    UpdateSQL.DeleteSQL.Text := 'delete from people where p_id = :p_id';
+    UpdateSQL.InsertSQL.Text := 'insert into people(p_id) values (:p_id)';
+    Query.UpdateObject := UpdateSQL;
+    Query.Open;
+    Query.FetchAll;
+    Query.Append;
+    Query.Fields[0].AsInteger := TEST_ROW_ID;
+    Query.Post;
+    Check(Query.Active);
+    Query.Delete;
+    Query.Connection := NewConnection;
+    Query.Append;
+    Query.Fields[0].AsInteger := TEST_ROW_ID;
+    Query.Post;
+    Check(Query.Active);
+    Query.Delete;
+    NewConnection.Disconnect;
+    Query.Connection := Connection;
+    Query.Append;
+    Query.Fields[0].AsInteger := TEST_ROW_ID;
+    Query.Post;
+    Check(Query.Active);
+    Query.Delete;
+  finally
+    if Assigned(NewConnection) then begin
+      NewConnection.Disconnect;
+      FreeAndNil(NewConnection);
+    end;
+    if Assigned(Query) then
+      FreeAndNil(Query);
+    if Assigned(UpdateSQL) then
+      FreeAndNil(UpdateSQL);
+    try
+      Connection.ExecuteDirect('delete from people where p_id >= '+SysUtils.IntToStr(TEST_ROW_ID-1));
+    finally
+      Connection.Disconnect;
     end;
   end;
 end;
@@ -2175,6 +2593,7 @@ begin
         TextStreamA.Position := 0;
         if ( Connection.ControlsCodePage = cCP_UTF16 ) then
         begin
+          TempU := '';
           SetLength(TempU, Length(TestString));
           TextStreamA.Read(PWideChar(TempU)^, Length(teststring)*2);
           CheckEquals(TempU, UnicodeString(TestString));
@@ -2182,6 +2601,7 @@ begin
         else
         {$ENDIF}
         begin
+          TempA := '';
           SetLength(TempA, Length(TestString));
           TextStreamA.Read(PAnsiChar(TempA)^, Length(teststring));
           CheckEquals(TempA, TestString);
@@ -2264,7 +2684,7 @@ end;
 procedure TZGenericTestDataSet.TestSpaced_Names;
 var
   Query: TZQuery;
-
+  IC: IZIdentifierConverter;
   function GetNonQuotedAlias(const Value: String): String;
   begin
     case ConnectionConfig.Provider of
@@ -2279,9 +2699,10 @@ var
 begin
   Query := CreateQuery;
   Connection.Connect;
+  IC := Connection.DbcConnection.GetMetadata.GetIdentifierConverter;
   try
     { test generic field names }
-    Query.SQL.Text := 'select * from '+Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('Spaced Names');
+    Query.SQL.Text := 'select * from '+IC.Quote('Spaced Names');
     Query.Open;
     CheckEquals('Cs Data1', Query.Fields[1].DisplayName);
     CheckEquals('cs data2', Query.Fields[2].DisplayName);
@@ -2300,10 +2721,10 @@ begin
     Query.Post;
     { test alias names without spaces and quoting rules }
     Query.SQL.Text := 'select cs_id, '+
-      Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('Cs Data1')+' as CsData1, '+
-      Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('cs data2')+' as csdata2, '+
-      Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('cS data3')+' as cSdata3 from '+
-      Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('Spaced Names');
+      IC.Quote('Cs Data1', iqColumn)+' as CsData1, '+
+      IC.Quote('cs data2', iqColumn)+' as csdata2, '+
+      IC.Quote('cS data3', iqColumn)+' as cSdata3 from '+
+      IC.Quote('Spaced Names');
     Query.Open;
     CheckEquals(GetNonQuotedAlias('CsData1'), Query.Fields[1].DisplayName);
     CheckEquals(GetNonQuotedAlias('csdata2'), Query.Fields[2].DisplayName);
@@ -2316,13 +2737,13 @@ begin
     Query.Post;
     { test alias names without spaces but with quoting rules }
     Query.SQL.Text := 'select cs_id, '+
-      Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('Cs Data1')+' as '+
-        Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('CsData1')+', '+
-      Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('cs data2')+' as '+
-        Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('csdata2')+', '+
-      Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('cS data3')+' as '+
-        Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('cSdata3')+
-       ' from '+Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('Spaced Names');
+      IC.Quote('Cs Data1', iqColumn)+' as '+
+        IC.Quote('CsData1', iqColumn)+', '+
+      IC.Quote('cs data2', iqColumn)+' as '+
+        IC.Quote('csdata2', iqColumn)+', '+
+      IC.Quote('cS data3', iqColumn)+' as '+
+        IC.Quote('cSdata3')+
+       ' from '+IC.Quote('Spaced Names', iqTable);
     Query.Open;
     CheckEquals('CsData1', Query.Fields[1].DisplayName);
     CheckEquals('csdata2', Query.Fields[2].DisplayName);
@@ -2335,13 +2756,13 @@ begin
     Query.Post;
     { test alias names with spaces and quoting rules }
     Query.SQL.Text := 'select cs_id, '+
-      Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('Cs Data1')+' as '+
-        Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('Cs  Data1')+', '+
-      Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('cs data2')+' as '+
-        Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('cs  data2')+', '+
-      Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('cS data3')+' as '+
-        Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('cS  data3')+
-       ' from '+Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('Spaced Names');
+      IC.Quote('Cs Data1', iqColumn)+' as '+
+        IC.Quote('Cs  Data1', iqColumn)+', '+
+      IC.Quote('cs data2', iqColumn)+' as '+
+        IC.Quote('cs  data2', iqColumn)+', '+
+      IC.Quote('cS data3', iqColumn)+' as '+
+        IC.Quote('cS  data3', iqColumn)+
+       ' from '+IC.Quote('Spaced Names', iqTable);
     Query.Open;
     CheckEquals('Cs  Data1', Query.Fields[1].DisplayName);
     CheckEquals('cs  data2', Query.Fields[2].DisplayName);
@@ -2353,11 +2774,19 @@ begin
     Query.FieldByName('cS  data3').AsInteger := TEST_ROW_ID+3;
     Query.Post;
   finally
-    Query.SQL.Text := 'delete from '+Connection.DbcConnection.GetMetadata.GetIdentifierConvertor.Quote('Spaced Names')+
+    Query.SQL.Text := 'delete from '+IC.Quote('Spaced Names')+
       ' where cs_id > '+SysUtils.IntToStr(TEST_ROW_ID-1);
     Query.ExecSQL;
     Query.Free;
   end;
+end;
+
+procedure TZGenericTestDataSet.OnTraceEvent_lcBindPrepStmt(Sender: TObject;
+  Event: TZLoggingEvent; var LogTrace: Boolean);
+begin
+  LogTrace := False;
+  if Event.Category = lcBindPrepStmt then
+    FLogMessage := Event.Message;
 end;
 
 procedure TZGenericTestDataSet.RunDefineFields;
@@ -2371,7 +2800,7 @@ procedure TZGenericTestDataSet.RunDefineSortedFields;
 var
   Bool: Boolean;
   CompareKinds: TComparisonKindArray;
-  Fields: TObjectDynArray;
+  Fields: TZFieldsLookUpDynArray;
 begin
   DefineSortedFields(FQuery, FFieldList, Fields, CompareKinds, Bool);
 end;
@@ -2381,13 +2810,13 @@ procedure TZGenericTestDataSet.TestDefineFields;
   procedure CheckFieldList(const FieldList: string; const Expect: array of TField);
   var
     Bool: Boolean;
-    Fields: TObjectDynArray;
+    Fields: TZFieldsLookUpDynArray;
     i: Integer;
   begin
     Fields := DefineFields(FQuery, FieldList, Bool, CommonTokenizer);
     CheckEquals(Length(Expect), Length(Fields), 'FieldList "' + FieldList + '" - item count');
     for i := Low(Fields) to High(Fields) do
-      CheckSame(Expect[i], Fields[i], 'FieldList "' + FieldList + '" - item #' + ZFastCode.IntToStr(i));
+      CheckSame(Expect[i], TField(Fields[i].Field), 'FieldList "' + FieldList + '" - item #' + ZFastCode.IntToStr(i));
   end;
 
   procedure CheckExceptionRaised(const FieldList: string; Expect: ExceptClass; const ExpectMsg: string = '');
@@ -2430,7 +2859,7 @@ procedure TZGenericTestDataSet.TestDefineSortedFields;
   procedure CheckFieldList(const FieldList: string; const ExpectFields: array of TField; const ExpectCompareKinds: array of TComparisonKind);
   var
     Bool: Boolean;
-    Fields: TObjectDynArray;
+    Fields: TZFieldsLookUpDynArray;
     CompareKinds: TComparisonKindArray;
     i: Integer;
   begin
@@ -2439,7 +2868,7 @@ procedure TZGenericTestDataSet.TestDefineSortedFields;
     CheckEquals(Length(ExpectCompareKinds), Length(CompareKinds), 'FieldList "' + FieldList + '" - item count');
     for i := Low(Fields) to High(Fields) do
     begin
-      CheckSame(ExpectFields[i], Fields[i], 'FieldList "' + FieldList + '" - item #' + ZFastCode.IntToStr(i));
+      CheckSame(ExpectFields[i], TField(Fields[i].Field), 'FieldList "' + FieldList + '" - item #' + ZFastCode.IntToStr(i));
       CheckEquals(Integer(ExpectCompareKinds[i]), Integer(CompareKinds[i]), 'FieldList "' + FieldList + '" - item #' + ZFastCode.IntToStr(i));
     end;
   end;
@@ -3090,11 +3519,15 @@ procedure TZInterbaseTestGUIDS.Test_SP_ParamGUIDSetVal;
 begin
   Connection.Properties.Values[DSProps_GUIDFields] := 'G_IN,G_OUT';
   SP.StoredProcName := PROC_NAME;
-  {$IFDEF TPARAM_HAS_ASBYTES}
-  SP.Params[0].AsBytes := BufferToBytes(@GuidVal.D1, SizeOf(TGUID));
+  {$IFNDEF DISABLE_ZPARAM}
+  SP.Params[0].AsGUID := GuidVal;
   {$ELSE}
-  Exit; // temp: still can't determine right way to do it on D7
-  SP.Params[0].Value := BytesToVar(BufferToBytes(@GuidVal.D1, SizeOf(TGUID)));
+    {$IFDEF TPARAM_HAS_ASBYTES}
+    SP.Params[0].AsBytes := BufferToBytes(@GuidVal.D1, SizeOf(TGUID));
+    {$ELSE}
+    Exit; // temp: still can't determine right way to do it on D7
+    SP.Params[0].Value := BytesToVar(BufferToBytes(@GuidVal.D1, SizeOf(TGUID)));
+    {$ENDIF}
   {$ENDIF}
   SP.Active := True;
   CheckEquals(1, SP.RecordCount, CurrentTest + ' rec count');
@@ -3199,9 +3632,358 @@ begin
 end;
 {$ENDIF}
 
+{$IFNDEF DISABLE_ZPARAM}
+{ TZTestBatchDML }
+
+const
+  hl_id_Index             = 0;
+  {%H-}hl_Boolean_Index        = 1;
+  {%H-}hl_Byte_Index           = 2;
+  {%H-}hl_Short_Index          = 3;
+  {%H-}hl_Integer_Index        = 4;
+  {%H-}hl_Long_Index           = 5;
+  {%H-}hl_Float_Index          = 6;
+  {%H-}hl_Double_Index         = 7;
+  {%H-}hl_BigDecimal_Index     = 8;
+  {%H-}hl_String_Index         = 9;
+  {%H-}hl_Unicode_Index        = 10;
+  {%H-}hl_Bytes_Index          = 11;
+  {%H-}hl_Date_Index           = 12;
+  {%H-}hl_Time_Index           = 13;
+  {%H-}hl_Timestamp_Index      = 14;
+  {%H-}hl_GUID_Index           = 15;
+  {%H-}hl_AsciiStream_Index    = 16;
+  {%H-}hl_UnicodeStream_Index  = 17;
+  {%H-}hl_BinaryStream_Index   = 18;
+
+hlTypeArray: array[hl_id_Index..hl_BinaryStream_Index] of TZSQLType = (
+  stInteger,
+  stBoolean,
+  stByte,
+  stSmall,
+  stInteger,
+  stLong,
+  stFloat,
+  stDouble,
+  stCurrency,
+  stString,
+  stUnicodeString,
+  stBytes,
+  stDate,
+  stTime,
+  stTimestamp,
+  stGUID,
+  stAsciiStream,
+  stUnicodeStream,
+  stBinaryStream);
+
+procedure TZTestBatchDML.InternalTestArrayBinding(Query: TZQuery;
+  FirstID, ArrayLen, LastFieldIndex: Integer);
+var
+  I, J: Integer;
+  {$IFNDEF TBLOBDATA_IS_TBYTES}
+  Bts: TBytes;
+  BlobData: TBlobData;
+  {$ENDIF}
+begin
+  CheckNotNull(Query);
+  Query.Params.BatchDMLCount := ArrayLen;
+  for i := 0 to ArrayLen-1 do begin
+    Query.Params[0].AsIntegers[i] := FirstID+I;
+    for J := 1 to LastFieldIndex do
+      case hlTypeArray[j] of
+        stBoolean:      Query.Params[J].AsBooleans[I] := Boolean(Random(1));
+        stByte:         Query.Params[J].AsByteArray[I] := Random(High(Byte));
+        stShort:        Query.Params[J].AsShortInts[I] := Random(High(Byte))+Low(ShortInt);
+        stWord:         Query.Params[J].AsWords[I] := Random(High(Word));
+        stSmall:        Query.Params[J].AsSmallInts[I] := Random(High(Word))+Low(SmallInt);
+        stInteger:      Query.Params[J].AsIntegers[I] := Random(High(Word))+Low(SmallInt);
+        stLongWord:     Query.Params[J].AsCardinals[I] := Random(High(Word));
+        stLong:         Query.Params[J].AsIntegers[I] := Random(High(Word))+Low(SmallInt);
+        stULong:        Query.Params[J].AsCardinals[I] := Random(High(Word));
+        stFloat:        Query.Params[J].AsSingles[I] := RandomFloat(-5000, 5000);
+        stDouble:       Query.Params[J].AsDoubles[I] := RandomFloat(-5000, 5000);
+        stCurrency:     Query.Params[J].AsCurrencys[I] := RandomFloat(-5000, 5000);
+        stBigDecimal:   Query.Params[J].AsFmtBCDs[I] := DoubleToBCD(RandomFloat(-5000, 5000));
+        stTime:         Query.Params[J].AsTimes[I] := Now;
+        stDate:         Query.Params[J].AsDates[I] := Now;
+        stTimeStamp:    Query.Params[J].AsDateTimes[I] := Now;
+        stGUID:         Query.Params[J].AsGUIDs[i] := RandomGUID;
+        stString:       Query.Params[J].AsStrings[i] := RandomStr(Random(99)+1);
+        stUnicodeString:Query.Params[J].AsUnicodeStrings[i] := {$IFNDEF UNICODE}Ascii7ToUnicodeString{$ENDIF}(RandomStr(Random(99)+1));
+        stBytes:        Query.Params[J].AsBytesArray[i] := RandomBts(ArrayLen);
+        stAsciiStream:  Query.Params[J].AsMemos[i] := RandomStr(Random(99)+1);
+        stUnicodeStream:Query.Params[J].AsUnicodeMemos[i] := {$IFNDEF UNICODE}Ascii7ToUnicodeString{$ENDIF}(RandomStr(Random(99)+1));
+        {$IFDEF TBLOBDATA_IS_TBYTES}
+        stBinaryStream: Query.Params[J].AsBlobs[i] := RandomBts(ArrayLen);
+        {$ELSE !TBLOBDATA_IS_TBYTES}
+        stBinaryStream: begin
+                          Bts := RandomBts(ArrayLen);
+                          BlobData := '';
+                          System.SetString(Blobdata, PAnsiChar(Bts), ArrayLen);
+                          Query.Params[J].AsBlobs[i] := BlobData;
+                        end;
+        {$ENDIF !TBLOBDATA_IS_TBYTES}
+        {$IFDEF WITH_CASE_WARNING}else ;{$ENDIF}
+      end;
+  end;
+  Query.ExecSQL;
+  CheckEquals(ArrayLen, Query.RowsAffected);
+end;
+
+const
+  LastFieldIndices: array[0..2] of Integer = (hl_Unicode_Index, hl_Date_Index, hl_BinaryStream_Index);
+  HighLoadFields: array[hl_id_Index..hl_BinaryStream_Index] of String = (
+    'hl_id', 'stBoolean', 'stByte', 'stShort', 'stInteger', 'stLong', ''+
+      'stFloat', 'stDouble', 'stBigDecimal', 'stString', 'stUnicodeString', 'stBytes',
+      'stDate', 'stTime', 'stTimestamp', 'stGUID', 'stAsciiStream', 'stUnicodeStream',
+      'stBinaryStream');
+
+procedure TZTestBatchDML.TestBatchDMLArrayBindings;
+var
+  Query:  TZQuery;
+  I, j: Integer;
+  SQL: String;
+begin
+  Connection.Connect;
+  Check(Connection.Connected);
+  if Connection.DbcConnection.GetMetadata.GetDatabaseInfo.SupportsArrayBindings then begin
+    Query := CreateQuery;
+    try
+      for i := low(LastFieldIndices) to high(LastFieldIndices) do begin
+        Connection.ExecuteDirect('delete from high_load');
+        SQL := 'insert into high_load(';
+        for j := hl_id_Index to LastFieldIndices[i] do
+          SQL := SQL+HighLoadFields[j]+',';
+        SQL[Length(SQL)] := ')';
+        SQL := SQL + ' values (';
+        for j := hl_id_Index to LastFieldIndices[i] do
+          SQL := SQL+':'+SysUtils.IntToStr(j+1)+',';
+        SQL[Length(SQL)] := ')';
+        Query.SQL.Text := SQL;
+        InternalTestArrayBinding(Query, 0, 50, LastFieldIndices[i]);
+        InternalTestArrayBinding(Query, 50, 20, LastFieldIndices[i]);
+        InternalTestArrayBinding(Query, 70, 10, LastFieldIndices[i]);
+        Query.Params.BatchDMLCount := 0;
+      end;
+    finally
+      FreeAndNil(Query);
+      Connection.ExecuteDirect('delete from high_load');
+    end;
+  end;
+end;
+
+{$ENDIF DISABLE_ZPARAM}
+{ TZAbstractTestMemTable }
+
+function TZAbstractTestMemTable.CreateTable: TZMemTable;
+begin
+  Result := TZMemTable.Create(nil);
+  if GetWithConnection then
+    Result.Connection := Connection;
+end;
+
+procedure TZAbstractTestMemTable.Test_aehimself_1;
+var Table: TZMemTable;
+begin
+  Table := CreateTable;
+  Check(Table <> nil);
+  try
+    Table.FieldDefs.Add('MyField', ftMemo);
+    Table.FieldDefs.Add('MyFieldWithSize', ftString, 20);
+    Table.Open;
+    Table.Append;
+    Table.FieldByName('MyField').AsString := 'Hello, world!';
+    CheckEquals('Hello, world!', Table.FieldByName('MyField').AsString);
+    Table.FieldByName('MyFieldWithSize').AsString := 'Hello, world!';
+    CheckEquals('Hello, world!', Table.FieldByName('MyFieldWithSize').AsString);
+    Table.Post;
+  finally
+    FreeAndNil(Table);
+  end;
+end;
+
+{ TZTestMemTableWithConnection }
+
+class function TZTestMemTableWithConnection.GetWithConnection: Boolean;
+begin
+  Result := True;
+end;
+
+procedure TZTestMemTableWithConnection.Test_CloneDataFrom_equipment_filtered;
+var Table: TZMemTable;
+  Query: TZQuery;
+begin
+  Table := CreateTable;
+  Query := CreateQuery;
+  Check(Query <> nil);
+  try
+    Query.SQL.Text := 'SELECT * FROM equipment';
+    Query.Open;
+    Query.Filtered := True;
+    CheckEquals(4, Query.RecordCount, 'RecordCount');
+    Query.FieldByName('eq_id').Index := Query.Fields.Count-1;
+    CheckEquals(False, Query.IsEmpty, 'IsEmpty');
+    Query.Filter := 'eq_date = ''' + DateToStr(Encodedate(2001, 10, 7)) + '''';
+    CheckEquals(1, Query.RecordCount);
+    CheckEquals(2, Query.FieldByName('eq_id').AsInteger, 'field eq_id');
+    Table.CloneDataFrom(Query);
+    CheckEquals(Query.Fields.Count, Table.Fields.Count, 'The fieldcount');
+    CheckEquals(Query.RecordCount, Table.RecordCount, 'The recordCount');
+    CheckEquals(2, Table.FieldByName('eq_id').AsInteger, 'field eq_id');
+    CheckEquals(Query.Fields.Count-1, Table.FieldByName('eq_id').Index, 'field eq_id');
+    Table.Empty;
+    CheckEquals(0, Table.RecordCount, 'the recordcount after empty call');
+    CheckEquals(Query.FieldCount, Table.FieldCount, 'fieldcount after empty call');
+    Table.Clear;
+    CheckEquals(0, Table.FieldCount, 'fieldcount after clear');
+    CheckEquals(0, Table.FieldDefs.Count, 'fielddefs count after clear');
+  finally
+    FreeAndNil(Table);
+    FreeAndNil(Query);
+  end;
+end;
+
+procedure TZTestMemTableWithConnection.Test_CloneDataFrom_people;
+var Table: TZMemTable;
+  Query: TZQuery;
+begin
+  Table := CreateTable;
+  Query := CreateQuery;
+  Check(Query <> nil);
+  try
+    Query.SQL.Text := 'select * from people';
+    Query.Open;
+    Table.CloneDataFrom(Query);
+    CheckEquals(Query.Fields.Count, Table.Fields.Count, 'The fieldcount');
+    CheckEquals(Query.RecordCount, Table.RecordCount, 'The recordCount');
+    Table.Close;
+    Table.Open;
+    CheckEquals(Query.Fields.Count, Table.Fields.Count, 'The fieldcount');
+    CheckEquals(0, Table.RecordCount, 'The recordCount');
+    Table.Append;
+    Table.Post;
+  finally
+    FreeAndNil(Table);
+    FreeAndNil(Query);
+  end;
+end;
+
+procedure TZTestMemTableWithConnection.Test_CloneDataFrom_people_no_Connection;
+var Table: TZMemTable;
+  Query: TZQuery;
+begin
+  Table := TZMemTable.Create(nil);
+  Query := CreateQuery;
+  Check(Query <> nil);
+  try
+    Query.SQL.Text := 'select * from people';
+    Query.Open;
+    Table.CloneDataFrom(Query);
+    CheckEquals(Query.Fields.Count, Table.Fields.Count, 'The fieldcount');
+    CheckEquals(Query.RecordCount, Table.RecordCount, 'The recordCount');
+    Table.Close;
+    Table.Open;
+    CheckEquals(Query.Fields.Count, Table.Fields.Count, 'The fieldcount');
+    CheckEquals(0, Table.RecordCount, 'The recordCount');
+    Table.Append;
+    Table.Post;
+  finally
+    FreeAndNil(Table);
+    FreeAndNil(Query);
+  end;
+end;
+
+procedure TZTestMemTableWithConnection.Test_AssignDataFrom_people_table;
+var Table: TZMemTable;
+  Query: TZQuery;
+  FieldDef: TFieldDef;
+  I: Integer;
+begin
+  Table := CreateTable;
+  Query := CreateQuery;
+  Check(Query <> nil);
+  try
+    Query.SQL.Text := 'select * from people';
+    Query.Open;
+    Table.CloneDataFrom(Query);
+    CheckEquals(Query.Fields.Count, Table.Fields.Count, 'The fieldcount');
+    CheckEquals(Query.RecordCount, Table.RecordCount, 'The recordCount');
+    Table.Close;
+    Table.FieldDefs.Add('Col1', ftTime);
+    Table.FieldDefs.Add('Col2', ftDate);
+    Table.Open;
+    CheckEquals(Query.Fields.Count+2, Table.Fields.Count, 'The fieldcount');
+    CheckEquals(0, Table.RecordCount, 'The recordCount');
+    Table.AssignDataFrom(Query);
+    CheckEquals(Query.RecordCount, Table.RecordCount, 'The recordCount');
+    CheckEquals(Query.Fields.Count+2, Table.Fields.Count, 'The fieldcount');
+    Table.Append;
+    Table.Post;
+    Table.Clear;
+    { test reverse logic }
+    for I := Query.FieldDefs.Count -1 downto 0 do begin
+      FieldDef := Table.FieldDefs.AddFieldDef;
+      FieldDef.Assign(Query.FieldDefs[i]);
+      if I = 2 then begin //add a calculated field
+        FieldDef := Table.FieldDefs.AddFieldDef;
+        FieldDef.DataType := ftInteger;
+        FieldDef.DisplayName := 'TestCalc';
+        FieldDef.InternalCalcField := True;
+      end;
+    end;
+    Table.Open;
+    Table.AssignDataFrom(Query);
+    CheckEquals(Query.RecordCount, Table.RecordCount, 'The recordCount');
+    CheckEquals(Query.Fields.Count+1, Table.Fields.Count, 'The fieldcount');
+
+  finally
+    FreeAndNil(Table);
+    FreeAndNil(Query);
+  end;
+end;
+
+{ TZTestMemTableWithoutConnection }
+
+class function TZTestMemTableWithoutConnection.GetWithConnection: Boolean;
+begin
+  Result := False;
+end;
+
+procedure TZTestMemTableWithoutConnection.Test_miab3_1;
+var Table: TZMemTable;
+begin
+  Table := CreateTable;
+  Check(Table <> nil);
+  try
+    Table.FieldDefs.Add('Lp', ftinteger);
+    Table.FieldDefs.Add('Naz',ftString,20);
+    Table.Open;   //<============
+    CheckEquals(2, Table.Fields.Count, 'The field count');
+    Table.Close;
+    Table.FieldDefs.Add('Lp1', ftinteger);
+    Table.FieldDefs.Add('Naz1',ftString,20);
+    Table.Open;  //<=================
+    CheckEquals(4, Table.Fields.Count, 'The field count');
+    Table.Close;
+    Table.FieldDefs.Clear;
+    Table.FieldDefs.Add('Lp2', ftinteger);
+    Table.FieldDefs.Add('Naz2',ftString,20);
+    Table.Open;
+    CheckEquals(2, Table.Fields.Count, 'The field count');
+  finally
+    FreeAndNil(Table);
+  end;
+end;
+
 initialization
   RegisterTest('component',TZGenericTestDataSet.Suite);
-  {$IFDEF ENABLE_INTERBASE}
+  RegisterTest('component',TZTestMemTableWithConnection.Suite);
+  RegisterTest('component',TZTestMemTableWithoutConnection.Suite);
+  {$IF defined(ENABLE_INTERBASE) or defined(ENABLE_FIREBIRD)}
   RegisterTest('component',TZInterbaseTestGUIDS.Suite);
+  {$IFEND}
+  {$IFNDEF DISABLE_ZPARAM}
+  RegisterTest('component', TZTestBatchDML.Suite);
   {$ENDIF}
 end.

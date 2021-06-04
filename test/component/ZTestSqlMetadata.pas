@@ -71,6 +71,7 @@ type
     procedure TearDown; override;
   published
     procedure TestMainDatasets;
+    procedure TestTablePrivileges;
   end;
 
 implementation
@@ -122,6 +123,24 @@ begin
   Metadata.Open;
   try
     Check(Metadata.RecordCount > 0);
+  finally
+    Metadata.Close;
+  end;
+end;
+
+procedure TZTestSQLMetadataCase.TestTablePrivileges;
+begin
+  Connection.Connect;
+  Check(Connection.Connected);
+  if ProtocolType in [protInterbase, protFirebird, protOracle] then
+    Metadata.TableName := 'PEOPLE'
+  else
+    Metadata.TableName := 'people';
+
+  Metadata.MetadataType := mdTablePrivileges;
+  Metadata.Open;
+  try
+    Check(Metadata.Active);
   finally
     Metadata.Close;
   end;

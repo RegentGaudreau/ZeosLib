@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -59,7 +59,8 @@ uses
   Variants,
   SysUtils,  Classes, {$IFDEF MSEgui}mdb, mclasses{$ELSE}DB{$ENDIF},
   ZSqlUpdate, ZDbcIntfs, ZVariant, ZDbcCache, ZDbcCachedResultSet,
-  ZAbstractRODataset, ZCompatibility, ZSequence,ZAbstractConnection
+  ZAbstractRODataset, ZCompatibility, ZSequence, ZAbstractConnection,
+  ZTransaction
   {$IFDEF TLIST_IS_DEPRECATED}, ZSysUtils, ZClasses{$ENDIF};
 
 type
@@ -77,37 +78,32 @@ type
   {** Defines where form types for resultsets. }
   TZWhereMode = (wmWhereKeyOnly, wmWhereAll);
 
-  {**
-    Abstract dataset component which supports read/write access and
-    cached updates.
-  }
-  TZAbstractDataset = class(TZAbstractRODataset)
+  /// <summary>Implements an dataset component which supports read/write access
+  ///  and cached updates.</summary>
+  TZAbstractRWDataSet = class(TZAbstractRODataset)
   private
     FCachedUpdatesBeforeMasterUpdate: Boolean;
     FCachedUpdates: Boolean;
-    FUpdateObject: TZUpdateSQL;
     FCachedResultSet: IZCachedResultSet;
     FCachedResolver: IZCachedResolver;
+    FGenDMLResolver: IZGenerateSQLCachedResolver;
     FOnApplyUpdateError: TDataSetErrorEvent;
     FOnUpdateRecord: TUpdateRecordEvent;
     FUpdateMode: TZUpdateMode;
     FWhereMode: TZWhereMode;
-    FSequence: TZSequence;
-    FSequenceField: string;
-
     FBeforeApplyUpdates: TNotifyEvent; {bangfauzan addition}
     FAfterApplyUpdates: TNotifyEvent; {bangfauzan addition}
     FDetailDataSets: {$IFDEF TLIST_IS_DEPRECATED}TZSortedList{$ELSE}TList{$ENDIF};
     FDetailCachedUpdates: array of Boolean;
-    FUpdateTransaction: TZAbstractTransaction;
-    procedure SetTxns2Resolver(const Resolver: IZCachedResolver);
   private
     function GetUpdatesPending: Boolean;
-    procedure SetUpdateObject(Value: TZUpdateSQL);
+    /// <summary>Sets a new CachedUpdates property value.</summary>
+    /// <param>"Value" a new CachedUpdates value.</param>
     procedure SetCachedUpdates(Value: Boolean);
     procedure SetWhereMode(Value: TZWhereMode);
     procedure SetUpdateMode(Value: TZUpdateMode);
-    procedure SetUpdateTransaction(Value: TZAbstractTransaction);
+  protected
+    function GetTryKeepDataOnDisconnect: Boolean; override;
   protected
     property CachedResultSet: IZCachedResultSet read FCachedResultSet
       write FCachedResultSet;
@@ -118,6 +114,7 @@ type
     property WhereMode: TZWhereMode read FWhereMode write SetWhereMode
       default wmWhereKeyOnly;
 
+    procedure SetTxns2Resolver(const Resolver: IZCachedResolver); virtual;
     procedure InternalClose; override;
     procedure InternalEdit; override;
     procedure InternalInsert; override;
@@ -135,24 +132,21 @@ type
     procedure DOBeforeApplyUpdates; {bangfauzan addition}
     procedure DOAfterApplyUpdates; {bangfauzan addition}
 
-
-    function CreateStatement(const SQL: string; Properties: TStrings):
-      IZPreparedStatement; override;
+    /// <summary>Creates a DBC resultset for the query.</summary>
+    /// <param>"SQL" an SQL query.</param>
+    /// <param>"MaxRows" a maximum rows number (-1 for all).</param>
+    /// <returns>a created DBC resultset.</returns>
     function CreateResultSet(const SQL: string; MaxRows: Integer):
       IZResultSet; override;
     {$IFDEF HAVE_UNKNOWN_CIRCULAR_REFERENCE_ISSUES}
     function GetUpdatable: Boolean; override;
     {$ENDIF}
-    procedure Notification(AComponent: TComponent; Operation: TOperation);
-      override;
-
   {$IFDEF WITH_IPROVIDER}
     function PSUpdateRecord(UpdateKind: TUpdateKind;
       Delta: TDataSet): Boolean; override;
   {$ENDIF}
-    procedure RegisterDetailDataSet(Value: TZAbstractDataset; CachedUpdates: Boolean);
+    procedure RegisterDetailDataSet(Value: TZAbstractRWDataSet; CachedUpdates: Boolean);
     procedure DisposeCachedUpdates;
-    procedure SetTransaction(Value: TZAbstractTransaction);
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -167,11 +161,7 @@ type
 
   public
     property UpdatesPending: Boolean read GetUpdatesPending;
-    property Sequence: TZSequence read FSequence write FSequence;
-    property SequenceField: string read FSequenceField write FSequenceField;
-
   published
-    property UpdateObject: TZUpdateSQL read FUpdateObject write SetUpdateObject;
     property CachedUpdates: Boolean read FCachedUpdates write SetCachedUpdates
       default False;
 
@@ -184,8 +174,6 @@ type
       write FBeforeApplyUpdates; {bangfauzan addition}
     property AfterApplyUpdates: TNotifyEvent read FAfterApplyUpdates
       write FAfterApplyUpdates; {bangfauzan addition}
-    property UpdateTransaction: TZAbstractTransaction read FUpdateTransaction
-      write SetUpdateTransaction;
   published
     property BeforeInsert;
     property AfterInsert;
@@ -201,19 +189,81 @@ type
     property OnEditError;
     property OnPostError;
     property OnNewRecord;
+    property Options default [doCalcDefaults, doPreferPrepared];
   end;
+
+  /// <author>EgonHugeist</author>
+  /// <summary>Implements an abstract read/write dataset supporting a
+  ///  Sequence fields and an UpdateTransaction.</summary>
+  TZAbstractRWTxnSeqDataSet = class(TZAbstractRWDataSet)
+  private
+    FUpdateTransaction: TZAbstractTransaction;
+    FSequence: TZSequence;
+    FSequenceField: string;
+  protected
+    procedure SetTxns2Resolver(const Resolver: IZCachedResolver); override;
+    procedure SetTransaction(Value: TZAbstractTransaction); override;
+    procedure SetUpdateTransaction(Value: TZAbstractTransaction);
+    /// <summary>Processes component notifications.</summary>
+    /// <param>"AComponent" a changed component object.</summary>
+    /// <param>"Operation" a component operation code.</summary>
+    procedure Notification(AComponent: TComponent; Operation: TOperation);
+      override;
+    procedure InternalPost; override;
+    procedure CheckConnected; override;
+  public
+    destructor Destroy; override;
+  published
+    property Sequence: TZSequence read FSequence write FSequence;
+    property SequenceField: string read FSequenceField write FSequenceField;
+    property UpdateTransaction: TZAbstractTransaction read FUpdateTransaction
+      write SetUpdateTransaction;
+    property Transaction;
+  end;
+
+  /// <author>EgonHugeist</author>
+  /// <summary>Implements an abstract read/write dataset supporting an
+  ///  UpdateObject component</summary>
+  TZAbstractRWTxnUpdateObjDataSet = Class(TZAbstractRWTxnSeqDataSet)
+  private
+    FUpdateObject: TZUpdateSQL;
+    /// <summary>Sets a new UpdateSQL object.</summary>
+    /// <param>"Value" a new TZUpdateSQL object.</summary>
+    procedure SetUpdateObject(Value: TZUpdateSQL);
+  protected
+    /// <summary>Processes component notifications.</summary>
+    /// <param>"AComponent" a changed component object.</summary>
+    /// <param>"Operation" a component operation code.</summary>
+    procedure Notification(AComponent: TComponent; Operation: TOperation);
+      override;
+    /// <summary>Creates a DBC resultset for the query.</summary>
+    /// <param>"SQL" an SQL query.</param>
+    /// <param>"MaxRows" a maximum rows number (-1 for all).</param>
+    /// <returns>a created DBC resultset.</returns>
+    function CreateResultSet(const SQL: string; MaxRows: Integer):
+      IZResultSet; override;
+  public
+    destructor Destroy; override;
+  published
+    property UpdateObject: TZUpdateSQL read FUpdateObject write SetUpdateObject;
+  End;
+
+  /// <author>EgonHugeist</author>
+  /// <summary>Defines an alias of TZAbstractRWDataSet for backward compatibility</summary>
+  TZAbstractDataset = TZAbstractRWDataSet;
+
 
 implementation
 
 uses Math, ZMessages, ZDatasetUtils, ZDbcProperties;
 
-{ TZAbstractDataset }
+{ TZAbstractRWDataSet }
 
 {**
   Constructs this object and assignes the mail properties.
   @param AOwner a component owner.
 }
-constructor TZAbstractDataset.Create(AOwner: TComponent);
+constructor TZAbstractRWDataSet.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
 
@@ -226,7 +276,7 @@ end;
 {**
   Destroys this object and cleanups the memory.
 }
-destructor TZAbstractDataset.Destroy;
+destructor TZAbstractRWDataSet.Destroy;
 begin
   AfterCancel := nil;
   BeforeCancel := nil;
@@ -234,119 +284,41 @@ begin
   then Cancel;
 
   FreeAndNil(FDetailDataSets);
-  if Assigned(FUpdateObject) then
-  begin
-    FUpdateObject.DataSet := nil;
-    SetUpdateObject(nil);
-  end;
   inherited Destroy;
 end;
 
 type
   HackTZAbstractTransaction = class(TZAbstractTransaction);
 
-{**
-  Sets a new UpdateSQL object.
-  @param Value a new UpdateSQL object.
-}
-procedure TZAbstractDataset.SetUpdateObject(Value: TZUpdateSQL);
-var TempResolver: IZCachedResolver; //need a temporay interface to compare the resolvers
+procedure TZAbstractRWDataSet.SetCachedUpdates(Value: Boolean);
 begin
-  if FUpdateObject <> Value then begin
-    TempResolver := nil; //init
-    if Assigned(FUpdateObject) then begin
-      FUpdateObject.RemoveFreeNotification(Self);
-      { get a local interface ptr of old update object for comparesion below }
-      FUpdateObject.GetInterface(IZCachedResolver, TempResolver);
-    end;
-    FUpdateObject := Value;
-    if Assigned(FUpdateObject) then begin
-      FUpdateObject.FreeNotification(Self);
-      FUpdateObject.DataSet := Self;
-    end;
-    if Active and (CachedResultSet <> nil) then
-      if FUpdateObject <> nil then begin
-        { get a local interface of the component }
-        FUpdateObject.GetInterface(IZCachedResolver, TempResolver);
-        CachedResultSet.SetResolver(TempResolver);
-        SetTxns2Resolver(TempResolver);
-      end else begin
-        {EH: now test if the old FUpdateObject intf equals with current cached resolver }
-        if FCachedResolver = TempResolver then
-          { do not use this interface any more. Use the native resolver of
-            the cached RS instead. Otherwise on freeing (self) the compiler
-            attaches dead memory later on (this is hidded with FastMM in our tests f.e.)
-            -> Component interfaces are not refcounted by default}
-          FCachedResolver := CachedResultSet.GetNativeResolver;
-        CachedResultSet.SetResolver(FCachedResolver);
-        SetTxns2Resolver(FCachedResolver);
-      end;
-  end;
-end;
-
-procedure TZAbstractDataset.SetUpdateTransaction(Value: TZAbstractTransaction);
-var Txn: IZTransaction;
-begin
-  if Value <> FUpdateTransaction then begin
-    if (FTransaction <> nil) and (FTransaction <> FUpdateTransaction) and (FUpdateTransaction <> nil) then
-      FUpdateTransaction.UnregisterDataSet(Self);
-    FUpdateTransaction := Value;
-    if FUpdateTransaction <> nil then
-      FUpdateTransaction.RegisterDataSet(Self);
-    if (Value<> nil) and Value.Active
-    then Txn := HackTZAbstractTransaction(Value).GetIZTransaction
-    else Txn := nil;
-    if CachedResolver <> nil then
-      CachedResolver.SetTransaction(Txn);
-  end;
-end;
-
-{**
-  Sets a new CachedUpdates property value.
-  @param Value a new CachedUpdates value.
-}
-procedure TZAbstractDataset.SetCachedUpdates(Value: Boolean);
-begin
-  if FCachedUpdates <> Value then
-  begin
+  if FCachedUpdates <> Value then begin
     FCachedUpdates := Value;
     if Active and (CachedResultSet <> nil) then
       CachedResultSet.SetCachedUpdates(Value);
   end;
 end;
 
-procedure TZAbstractDataset.SetTransaction(Value: TZAbstractTransaction);
-begin
-  if Value <> FTransaction then begin
-    if (FTransaction <> nil) and (FTransaction <> FUpdateTransaction) then
-      FTransaction.UnregisterDataSet(Self);
-    FTransaction := Value;
-    if FTransaction <> nil then
-      FTransaction.RegisterDataSet(Self);
-  end;
-end;
-
-procedure TZAbstractDataset.SetTxns2Resolver(const Resolver: IZCachedResolver);
-var Txn: IZTransaction;
+procedure TZAbstractRWDataSet.SetTxns2Resolver(const Resolver: IZCachedResolver);
 begin
   if Resolver = nil then Exit;
-  if FUpdateTransaction = nil
-  then Txn := nil
-  else Txn := HackTZAbstractTransaction(FUpdateTransaction).GetIZTransaction;
-  Resolver.SetTransaction(Txn);
+  if FTransaction <> nil then
+    Resolver.SetTransaction(HackTZAbstractTransaction(FTransaction).GetIZTransaction);
 end;
 
 {**
   Sets a new UpdateMode property value.
   @param Value a new UpdateMode value.
 }
-procedure TZAbstractDataset.SetUpdateMode(Value: TZUpdateMode);
+procedure TZAbstractRWDataSet.SetUpdateMode(Value: TZUpdateMode);
 begin
   if FUpdateMode <> Value then
   begin
     FUpdateMode := Value;
-    if Active then
-      Close;
+    if FGenDMLResolver <> nil then
+      FGenDMLResolver.SetUpdateAll(FUpdateMode = umUpdateAll);
+    {if Active then
+      Close;}
   end;
 end;
 
@@ -354,55 +326,18 @@ end;
   Sets a new WhereMode property value.
   @param Value a new WhereMode value.
 }
-procedure TZAbstractDataset.SetWhereMode(Value: TZWhereMode);
+procedure TZAbstractRWDataSet.SetWhereMode(Value: TZWhereMode);
 begin
-  if FWhereMode <> Value then
-  begin
+  if FWhereMode <> Value then begin
     FWhereMode := Value;
-    if Active then
-      Close;
+    if FGenDMLResolver <> nil then
+      FGenDMLResolver.SetWhereAll(FWhereMode = wmWhereAll);
+    {if Active then
+      Close;}
   end;
 end;
 
-{**
-  Creates a DBC statement for the query.
-  @param SQL an SQL query.
-  @param Properties a statement specific properties.
-  @returns a created DBC statement.
-}
-function TZAbstractDataset.CreateStatement(
-  const SQL: string; Properties: TStrings): IZPreparedStatement;
-var
-  Temp: TStrings;
-begin
-  Temp := TStringList.Create;
-  try
-    Temp.AddStrings(Properties);
-
-    { Sets update mode property.}
-    case FUpdateMode of
-      umUpdateAll: Temp.Values[DSProps_Update] := 'all';
-      umUpdateChanged: Temp.Values[DSProps_Update] := 'changed';
-    end;
-    { Sets where mode property. }
-    case FWhereMode of
-      wmWhereAll: Temp.Values[DSProps_Where] := 'all';
-      wmWhereKeyOnly: Temp.Values[DSProps_Where] := 'keyonly';
-    end;
-
-    Result := inherited CreateStatement(SQL, Temp);
-  finally
-    Temp.Free;
-  end;
-end;
-
-{**
-  Creates a DBC resultset for the query.
-  @param SQL an SQL query.
-  @param MaxRows a maximum rows number (-1 for all).
-  @returns a created DBC resultset.
-}
-function TZAbstractDataset.CreateResultSet(const SQL: string; MaxRows: Integer):
+function TZAbstractRWDataSet.CreateResultSet(const SQL: string; MaxRows: Integer):
   IZResultSet;
 begin
   Result := inherited CreateResultSet(SQL, MaxRows);
@@ -410,20 +345,21 @@ begin
   if not Assigned(Result) then
     Exit;
 
-  if Result.QueryInterface(IZCachedResultSet, FCachedResultSet) = 0 then
-  begin
-    CachedResultSet := Result as IZCachedResultSet;
-    CachedResolver := CachedResultSet.GetResolver;
-    CachedResultSet.SetCachedUpdates(CachedUpdates);
-    if FUpdateObject <> nil then begin
-      CachedResultSet.SetResolver(FUpdateObject);
-      SetTxns2Resolver(FUpdateObject);
-    end else SetTxns2Resolver(CachedResolver);
+  if Result.QueryInterface(IZCachedResultSet, FCachedResultSet) = 0 then begin
+    FCachedResolver := CachedResultSet.GetResolver;
+    FCachedResultSet.SetCachedUpdates(CachedUpdates);
+    if (FCachedResolver <> nil) and (FCachedResolver.QueryInterface(IZGenerateSQLCachedResolver, FGenDMLResolver) = S_OK) then begin
+      FGenDMLResolver.SetUpdateAll(FUpdateMode = umUpdateAll);
+      FGenDMLResolver.SetWhereAll(FWhereMode = wmWhereAll);
+      FGenDMLResolver.SetCalcDefaults(doCalcDefaults in Options);
+      if FWhereMode <> wmWhereAll then
+        FGenDMLResolver.setResolverParameters(Properties);
+    end;
   end;
 end;
 
 {$IFDEF HAVE_UNKNOWN_CIRCULAR_REFERENCE_ISSUES}
-function TZAbstractDataset.GetUpdatable: Boolean;
+function TZAbstractRWDataSet.GetUpdatable: Boolean;
 begin
   Result := False;
 end;
@@ -432,23 +368,26 @@ end;
 {**
   Performs internal query closing.
 }
-procedure TZAbstractDataset.InternalClose;
+procedure TZAbstractRWDataSet.InternalClose;
 begin
   inherited InternalClose;
 
   if not ResultSetWalking then begin
-    {if Assigned(CachedResultSet) then begin
-      CachedResultSet.Close;
-      CachedResultSet := nil;
-    end;}
-    CachedResolver := nil;
+    if FCachedResolver <> nil then begin
+      FCachedResolver.FlushStatementCache;
+      FCachedResolver := nil;
+    end;
+    if FGenDMLResolver <> nil then begin
+      FGenDMLResolver.FlushStatementCache;
+      FGenDMLResolver := nil;
+    end;
   end;
 end;
 
 {**
   Performs an internal action before switch into edit mode.
 }
-procedure TZAbstractDataset.InternalEdit;
+procedure TZAbstractRWDataSet.InternalEdit;
 var
   RowNo: NativeInt;
   RowBuffer: PZRowBuffer;
@@ -463,7 +402,7 @@ end;
 {**
   Performs an internal action before switch into insert mode.
 }
-procedure TZAbstractDataset.InternalInsert;
+procedure TZAbstractRWDataSet.InternalInsert;
 {$IFDEF HAVE_INSERT_BOOKMARK_BUG}
 var RowBuffer: PZRowBuffer;
 {$ENDIF}
@@ -480,17 +419,18 @@ end;
 {**
   Performs an internal record updates.
 }
-procedure TZAbstractDataset.InternalUnPrepare;
+procedure TZAbstractRWDataSet.InternalUnPrepare;
 begin
   if Assigned(CachedResultSet) then begin
     CachedResultSet.Close;
     CachedResultSet := nil;
+    ResultSet := nil;
   end;
   inherited InternalUnPrepare;
 
 end;
 
-procedure TZAbstractDataset.InternalUpdate;
+procedure TZAbstractRWDataSet.InternalUpdate;
 var
   RowNo: NativeInt;
   RowBuffer: PZRowBuffer;
@@ -520,9 +460,9 @@ end;
     of the result set.
 }
 {$IFNDEF WITH_InternalAddRecord_TRecBuf}
-procedure TZAbstractDataset.InternalAddRecord(Buffer: Pointer; Append: Boolean);
+procedure TZAbstractRWDataSet.InternalAddRecord(Buffer: Pointer; Append: Boolean);
 {$ELSE}
-procedure TZAbstractDataset.InternalAddRecord(Buffer: TRecBuf; Append: Boolean);
+procedure TZAbstractRWDataSet.InternalAddRecord(Buffer: TRecBuf; Append: Boolean);
 {$ENDIF}
 var
   RowNo: NativeInt;
@@ -559,7 +499,7 @@ end;
 {**
   Performs an internal post updates.
 }
-procedure TZAbstractDataset.InternalPost;
+procedure TZAbstractRWDataSet.InternalPost;
 var
   RowBuffer: PZRowBuffer;
   {$IFDEF WITH_TBOOKMARK}
@@ -567,33 +507,38 @@ var
   {$ELSE}
   BM:TBookMarkStr{%H-};
   {$ENDIF}
-  I: Integer;
+  I, j: Integer;
 begin
-  if (FSequenceField <> '') and Assigned(FSequence) then
-    if FieldByName(FSequenceField).IsNull then
-      FieldByName(FSequenceField).Value := FSequence.GetNextValue;
   //inherited;  //AVZ - Firebird defaults come through when this is commented out
 
 
   if not GetActiveBuffer(RowBuffer) then
     raise EZDatabaseError.Create(SInternalError);
-
-  Connection.ShowSqlHourGlass;
+  if Connection <> nil then
+    Connection.ShowSqlHourGlass;
   try
     //revert Master Detail updates makes it possible to update
     // with ForeignKey contraints
     if Assigned(MasterLink.DataSet) then
-      if (TDataSet(MasterLink.DataSet) is TZAbstractDataset) then
-        if ( doUpdateMasterFirst in TZAbstractDataset(MasterLink.DataSet).Options )
+      if (TDataSet(MasterLink.DataSet) is TZAbstractRWDataSet) then
+        if ( doUpdateMasterFirst in TZAbstractRWDataSet(MasterLink.DataSet).Options )
          or ( doUpdateMasterFirst in Options ) then
         begin //This is an detail-table
           FCachedUpdatesBeforeMasterUpdate := CachedUpdates; //buffer old value
           if not(CachedUpdates) then
             CachedUpdates := True; //Execute without writing
-          TZAbstractDataset(MasterLink.DataSet).RegisterDetailDataSet(Self,
-            TZAbstractDataset(MasterLink.DataSet).CachedUpdates);
+          TZAbstractRWDataSet(MasterLink.DataSet).RegisterDetailDataSet(Self,
+            TZAbstractRWDataSet(MasterLink.DataSet).CachedUpdates);
         end;
 
+    if FGenDMLResolver <> nil then
+      for i := 0 to Fields.Count -1 do
+        if not (pfInUpdate in Fields[i].ProviderFlags) or not (pfInWhere in Fields[i].ProviderFlags) then
+          for j := 0 to high(FieldsLookupTable) do
+            if (FieldsLookupTable[j].Field = Fields[i]) and (FieldsLookupTable[j].DataSource = dltResultSet) then begin
+              FGenDMLResolver.SetReadOnly(FieldsLookupTable[j].Index, Fields[i].ReadOnly or not (pfInUpdate in Fields[i].ProviderFlags));
+              FGenDMLResolver.SetSearchable(FieldsLookupTable[j].Index, (pfInWhere in Fields[i].ProviderFlags));
+            end;
     if State = dsInsert then
       {$IFNDEF WITH_InternalAddRecord_TRecBuf}
       InternalAddRecord(RowBuffer, False)
@@ -606,24 +551,21 @@ begin
     // Apply Detail updates now
     if FDetailDataSets.Count > 0 then
       for i := 0 to FDetailDataSets.Count -1 do
-        if (TDataSet(FDetailDataSets.Items[i]) is TZAbstractDataset) then
-          begin
+        if (TDataSet(FDetailDataSets.Items[i]) is TZAbstractRWDataSet) then begin
             if not (Self.FDetailCachedUpdates[I]) then
-              TZAbstractDataset(TDataSet(FDetailDataSets.Items[i])).ApplyUpdates;
-            TZAbstractDataset(TDataSet(FDetailDataSets.Items[i])).CachedUpdates := Self.FDetailCachedUpdates[I];
+              TZAbstractRWDataSet(TDataSet(FDetailDataSets.Items[i])).ApplyUpdates;
+            TZAbstractRWDataSet(TDataSet(FDetailDataSets.Items[i])).CachedUpdates := Self.FDetailCachedUpdates[I];
           end;
     FDetailDataSets.Clear;
     SetLength(FDetailCachedUpdates, 0);
 
     {BUG-FIX: bangfauzan addition}
-    if (SortedFields <> '') and not (doDontSortOnPost in Options) then
-    begin
+    if (SortedFields <> '') and not (doDontSortOnPost in Options) then begin
       FreeFieldBuffers;
       SetState(dsBrowse);
       Resync([]);
       BM := Bookmark;
-      if BookmarkValid({$IFDEF WITH_TBOOKMARK}BM{$ELSE}@BM{$ENDIF}) Then
-      begin
+      if BookmarkValid({$IFDEF WITH_TBOOKMARK}BM{$ELSE}@BM{$ENDIF}) Then begin
         InternalGotoBookmark({$IFDEF WITH_TBOOKMARK}BM{$ELSE}@BM{$ENDIF});
         Resync([rmExact, rmCenter]);
       end;
@@ -635,7 +577,8 @@ begin
     end;
     {end of bangfauzan addition}
   finally
-    Connection.HideSqlHourGlass;
+    if Connection <> nil then
+      Connection.HideSqlHourGlass;
     //DetailLinks.Free;
   end;
 end;
@@ -643,13 +586,12 @@ end;
 {**
   Performs an internal record removing.
 }
-procedure TZAbstractDataset.InternalDelete;
+procedure TZAbstractRWDataSet.InternalDelete;
 var
   RowNo: NativeInt;
   RowBuffer: PZRowBuffer;
 begin
-  if (CachedResultSet <> nil) and GetActiveBuffer(RowBuffer) then
-  begin
+  if (CachedResultSet <> nil) and GetActiveBuffer(RowBuffer) then begin
     Connection.ShowSqlHourGlass;
     try
       RowNo := {%H-}NativeInt(CurrentRows[CurrentRow - 1]);
@@ -663,8 +605,7 @@ begin
       end;
 
       { Filters the row }
-      if not FilterRow(RowNo) then
-      begin
+      if not FilterRow(RowNo) then begin
         CurrentRows.Delete(CurrentRow - 1);
         if not FetchRows(CurrentRow) then
           CurrentRow := Min(CurrentRows.Count, CurrentRow);
@@ -678,62 +619,39 @@ end;
 {**
   Performs an internal cancel updates.
 }
-procedure TZAbstractDataset.InternalCancel;
+procedure TZAbstractRWDataSet.InternalCancel;
 var
   RowNo: NativeInt;
   RowBuffer: PZRowBuffer;
 begin
   if (CachedResultSet <> nil) and GetActiveBuffer(RowBuffer) then
-    if (CurrentRow > 0) and (State = dsEdit) then
-    begin
+    if (CurrentRow > 0) and (State = dsEdit) then begin
       RowNo := {%H-}NativeInt(CurrentRows[CurrentRow - 1]);
       CachedResultSet.MoveAbsolute(RowNo);
       RowAccessor.RowBuffer := RowBuffer;
       CachedResultSet.RevertRecord;
-    end
-  else if (State = dsInsert) then
-    CachedResultSet.RevertRecord;
-end;
-
-{**
-  Processes component notifications.
-  @param AComponent a changed component object.
-  @param Operation a component operation code.
-}
-procedure TZAbstractDataset.Notification(AComponent: TComponent;
-  Operation: TOperation);
-begin
-  inherited Notification(AComponent, Operation);
-
-  if (Operation = opRemove) then
-  begin
-    if (AComponent = FUpdateObject) then
-    begin
-      Close;
-      FUpdateObject := nil;
-    end;
-    if (AComponent = FSequence) then
-    begin
-      FSequence := nil;
-    end;
-  end;
+    end else if (State = dsInsert) then
+      CachedResultSet.RevertRecord;
 end;
 
 {**
    Applies all cached updates stored in the resultset.
 }
-procedure TZAbstractDataset.ApplyUpdates;
+procedure TZAbstractRWDataSet.ApplyUpdates;
 begin
   if not Active then
     Exit;
-
+  CheckConnected;
   Connection.ShowSQLHourGlass;
   try
     if State in [dsEdit, dsInsert] then
        Post;
 
     DoBeforeApplyUpdates; {bangfauzan addition}
-
+    if FCachedResolver <> nil then
+      FCachedResolver.SetConnection(Connection.DbcConnection);
+    if FGenDMLResolver <> nil then
+      FGenDMLResolver.SetConnection(Connection.DbcConnection);
     if CachedResultSet <> nil then
       if Connection.AutoCommit and
         not ( Connection.TransactIsolationLevel in [tiReadCommitted, tiSerializable] ) then
@@ -754,7 +672,7 @@ end;
 {**
    Dispose all cached updates stored in the resultset.
 }
-procedure TZAbstractDataset.DisposeCachedUpdates;
+procedure TZAbstractRWDataSet.DisposeCachedUpdates;
 begin
   if Active then
     if Assigned(CachedResultSet) then
@@ -764,10 +682,9 @@ end;
 {**
   Clears cached updates buffer.
 }
-procedure TZAbstractDataset.CommitUpdates;
+procedure TZAbstractRWDataSet.CommitUpdates;
 begin
   CheckBrowseMode;
-
   if (CachedResultSet <> nil) and CachedResultSet.IsPendingUpdates then
     CachedResultSet.DisposeCachedUpdates;
 end;
@@ -775,14 +692,12 @@ end;
 {**
   Cancels all cached updates and clears the buffer.
 }
-procedure TZAbstractDataset.CancelUpdates;
+procedure TZAbstractRWDataSet.CancelUpdates;
 begin
   if State in [dsEdit, dsInsert] then
     Cancel;
-
   if CachedResultSet <> nil then
     CachedResultSet.CancelUpdates;
-
   if not (State in [dsInactive]) then
     RereadRows;
 end;
@@ -790,26 +705,22 @@ end;
 {**
   Reverts the previous status for the current row.
 }
-procedure TZAbstractDataset.RefreshCurrentRow(const RefreshDetails:Boolean);
-var
-    RowNo: NativeInt;
+procedure TZAbstractRWDataSet.RefreshCurrentRow(const RefreshDetails:Boolean);
+var RowNo: NativeInt;
     i: Integer;
-    ostate:TDataSetState;
+    ostate: TDataSetState;
 begin
-  if State=dsBrowse then
-  begin
-    if CachedResultSet <> nil then
-    begin
+  if State=dsBrowse then begin
+    if CachedResultSet <> nil then begin
+      CheckConnected;
       UpdateCursorPos;
       RowNo := {%H-}NativeInt(CurrentRows[CurrentRow - 1]);
       CachedResultSet.MoveAbsolute(RowNo);
       CachedResultSet.RefreshRow;
       if not (State in [dsInactive]) then
-      begin
         if RefreshDetails then
           Resync([])
-        else
-        begin
+        else begin
           ostate:=State;
           SetTempState(dsInternalCalc);
           try
@@ -819,20 +730,15 @@ begin
             RestoreState(ostate);
           end;
         end;
-      end;
     end;
-  end
-  else
-  begin
+  end else
     raise EZDatabaseError.Create(SInternalError);
-  end;
 end;
 
 
-procedure TZAbstractDataset.RevertRecord;
+procedure TZAbstractRWDataSet.RevertRecord;
 begin
-  if State in [dsInsert] then
-  begin
+  if State in [dsInsert] then begin
     Cancel;
     Exit;
   end;
@@ -846,11 +752,21 @@ begin
     Resync([]);
 end;
 
+function TZAbstractRWDataSet.GetTryKeepDataOnDisconnect: Boolean;
+begin
+  if Active then
+    Result := FTryKeepDataOnDisconnect and (FCachedResultSet <> nil) and
+      FCachedResultSet.IsLastRowFetched and not FCachedResultSet.HasServerLinkedColumns and
+      ((ResultSetMetadata <> nil) and ResultSetMetadata.IsMetadataLoaded) and
+      not (csDestroying in ComponentState)
+  else Result := FTryKeepDataOnDisconnect
+end;
+
 {**
   Checks is there cached updates pending in the buffer.
   @return <code>True</code> if there some pending cached updates.
 }
-function TZAbstractDataset.GetUpdatesPending: Boolean;
+function TZAbstractRWDataSet.GetUpdatesPending: Boolean;
 begin
   if State = dsInactive then
     Result := False
@@ -870,7 +786,7 @@ end;
   @param Delta a dataset where the current position shows the row to update.
   @returns <code>True</code> if updates were successfully applied.
 }
-function TZAbstractDataset.PSUpdateRecord(UpdateKind: TUpdateKind;
+function TZAbstractRWDataSet.PSUpdateRecord(UpdateKind: TUpdateKind;
   Delta: TDataSet): Boolean;
 
 var
@@ -885,19 +801,20 @@ var
     Temp: Variant;
     SrcField: TField;
     KeyValues: Variant;
-    FieldRefs: TObjectDynArray;
+    FieldRefs: TZFieldsLookUpDynArray;
     OnlyDataFields: Boolean;
   begin
     if Properties.Values[DSProps_KeyFields] <> '' then
       KeyFields := Properties.Values[DSProps_KeyFields]
     else
-      KeyFields := DefineKeyFields(Fields, Connection.DbcConnection.GetMetadata.GetIdentifierConvertor);
-    FieldRefs := DefineFields(Self, KeyFields, OnlyDataFields, Connection.DbcConnection.GetDriver.GetTokenizer);
+      KeyFields := DefineKeyFields(Fields, Connection.DbcConnection.GetMetadata.GetIdentifierConverter);
+    FieldRefs := DefineFields(Self, KeyFields, OnlyDataFields,
+      Connection.DbcConnection.GetTokenizer);
     Temp := VarArrayCreate([0, Length(FieldRefs) - 1], varVariant);
 
     for I := 0 to Length(FieldRefs) - 1 do
     begin
-      SrcField := Delta.FieldByName(TField(FieldRefs[I]).FieldName);
+      SrcField := Delta.FieldByName(TField(FieldRefs[I].Field).FieldName);
       if SrcField <> nil
       then Temp[I] := SrcField.OldValue
       else Temp[I] := Null;
@@ -937,34 +854,24 @@ var
 
       case DestField.DataType of
         ftLargeInt:
-          begin
-            if SrcField.DataType = ftLargeInt then
-            begin
-              TLargeIntField(DestField).AsLargeInt :=
-                TLargeIntField(SrcField).AsLargeInt;
-            end
-            else
-              DestField.AsInteger := SrcField.AsInteger;
-          end;
+            if SrcField.DataType = ftLargeInt
+            then TLargeIntField(DestField).AsLargeInt := TLargeIntField(SrcField).AsLargeInt
+            else DestField.AsInteger := SrcField.AsInteger;
         ftBlob, ftMemo {$IFDEF WITH_WIDEMEMO}, ftWideMemo{$ENDIF}:
-          begin
-            if SrcField.DataType in [ftBlob, ftMemo {$IFDEF WITH_WIDEMEMO}, ftWideMemo{$ENDIF}] then
-            begin
-              SrcStream := SrcDataset.CreateBlobStream(SrcField, bmRead);
+          if SrcField.DataType in [ftBlob, ftMemo {$IFDEF WITH_WIDEMEMO}, ftWideMemo{$ENDIF}] then begin
+            SrcStream := SrcDataset.CreateBlobStream(SrcField, bmRead);
+            try
+              DestStream := DestDataset.CreateBlobStream(DestField, bmWrite);
               try
-                DestStream := DestDataset.CreateBlobStream(DestField, bmWrite);
-                try
-                  DestStream.CopyFrom(SrcStream, 0);
-                finally
-                  DestStream.Free;
-                end;
+                DestStream.CopyFrom(SrcStream, 0);
               finally
-                SrcStream.Free;
+                DestStream.Free;
               end;
-            end
-            else
-              DestField.AsVariant := SrcField.AsVariant;
-          end;
+            finally
+              SrcStream.Free;
+            end;
+          end else
+            DestField.AsVariant := SrcField.AsVariant;
         else
           DestField.AsVariant := SrcField.AsVariant;
       end;
@@ -991,31 +898,22 @@ begin
     { Applies updates. }
     try
       case UpdateKind of
-        ukModify:
-          begin
-            if LocateRecord then
-            begin
+        ukModify: if LocateRecord then begin
               Self.Edit;
               CopyRecord(Delta, Self);
               Self.Post;
               Result := True;
             end;
-          end;
-        ukInsert:
-          begin
+        ukInsert: begin
             Self.Append;
             CopyRecord(Delta, Self);
             Self.Post;
             Result := True;
           end;
-        ukDelete:
-          begin
-            if LocateRecord then
-            begin
+        ukDelete: if LocateRecord then begin
               Self.Delete;
               Result := True;
             end;
-          end;
       end;
     except
       Result := False;
@@ -1037,7 +935,7 @@ end;
 
 {$ENDIF}
 
-procedure TZAbstractDataset.RegisterDetailDataSet(Value: TZAbstractDataset;
+procedure TZAbstractRWDataSet.RegisterDetailDataSet(Value: TZAbstractRWDataSet;
   CachedUpdates: Boolean);
 begin
   FDetailDataSets.Add(Value);
@@ -1047,31 +945,199 @@ end;
 
 {============================bangfauzan addition===================}
 
-procedure TZAbstractDataset.DOBeforeApplyUpdates;
+procedure TZAbstractRWDataSet.DOBeforeApplyUpdates;
 begin
   if assigned(BeforeApplyUpdates) then
     FBeforeApplyUpdates(Self);
 end;
 
-procedure TZAbstractDataset.DOAfterApplyUpdates;
+procedure TZAbstractRWDataSet.DOAfterApplyUpdates;
 begin
   if assigned(AfterApplyUpdates) then
     FAfterApplyUpdates(Self);
 end;
 
-procedure TZAbstractDataset.EmptyDataSet;
+procedure TZAbstractRWDataSet.EmptyDataSet;
 begin
   if Active then
   begin
     Self.CancelUpdates;
     Self.CurrentRows.Clear;
     Self.CurrentRow:=0;
+    CachedResultSet.ResetCursor;
     Resync([]);
     InitRecord(ActiveBuffer);
   end;
 end;
 
 {========================end of bangfauzan addition================}
+
+{ TZAbstractRWTxnSeqDataSet }
+
+procedure TZAbstractRWTxnSeqDataSet.CheckConnected;
+begin
+  if Connection = nil then
+    raise EZDatabaseError.Create(SConnectionIsNotAssigned);
+  if not Connection.Connected then begin
+    Connection.Connect;
+    if FGenDMLResolver <> nil then
+      if Connection <> nil
+      then FGenDMLResolver.SetConnection(Connection.DbcConnection)
+      else FGenDMLResolver.SetConnection(nil);
+    if ResultSetMetadata <> nil then
+      ResultSetMetadata.SetMetaData(Connection.DbcConnection.GetMetadata);
+  end;
+end;
+
+destructor TZAbstractRWTxnSeqDataSet.Destroy;
+begin
+  AfterCancel := nil;
+  BeforeCancel := nil;
+  if State in [dsEdit, dsInsert] then
+    Cancel;
+  if Assigned(FSequence) then
+    FSequence := nil;
+  if (FUpdateTransaction <> nil) then
+    SetUpdateTransaction(nil); //unregister
+  inherited Destroy;
+end;
+
+procedure TZAbstractRWTxnSeqDataSet.InternalPost;
+begin
+  if not FCachedUpdates or ((FSequenceField <> '') and Assigned(FSequence)) then
+    CheckConnected;
+  if (FSequenceField <> '') and Assigned(FSequence) then
+    if FieldByName(FSequenceField).IsNull then
+      FieldByName(FSequenceField).Value := FSequence.GetNextValue;
+  inherited InternalPost;
+end;
+
+procedure TZAbstractRWTxnSeqDataSet.Notification(AComponent: TComponent;
+  Operation: TOperation);
+begin
+  inherited Notification(AComponent, Operation);
+  if (Operation = opRemove) then begin
+    if (AComponent = FUpdateTransaction) then
+      SetUpdateTransaction(nil);
+    if (AComponent = FSequence) then
+      FSequence := nil;
+  end;
+end;
+
+procedure TZAbstractRWTxnSeqDataSet.SetTransaction(Value: TZAbstractTransaction);
+begin
+  if Value <> FTransaction then begin
+    if (FTransaction <> nil) and (FTransaction <> FUpdateTransaction) then
+      FTransaction.UnregisterComponent(Self);
+    FTransaction := Value;
+    if FTransaction <> nil then
+      FTransaction.RegisterComponent(Self);
+  end;
+end;
+
+procedure TZAbstractRWTxnSeqDataSet.SetTxns2Resolver(
+  const Resolver: IZCachedResolver);
+begin
+  if Resolver = nil then Exit;
+  if FUpdateTransaction = nil
+  then inherited SetTxns2Resolver(Resolver)
+  else Resolver.SetTransaction(HackTZAbstractTransaction(FUpdateTransaction).GetIZTransaction);
+end;
+
+procedure TZAbstractRWTxnSeqDataSet.SetUpdateTransaction(
+  Value: TZAbstractTransaction);
+var Txn: IZTransaction;
+begin
+  if Value <> FUpdateTransaction then begin
+    if (FTransaction <> nil) and (FTransaction <> FUpdateTransaction) and (FUpdateTransaction <> nil) then
+      FUpdateTransaction.UnregisterComponent(Self);
+    FUpdateTransaction := Value;
+    if FUpdateTransaction <> nil then
+      FUpdateTransaction.RegisterComponent(Self);
+    if (Value<> nil) and Value.Active
+    then Txn := HackTZAbstractTransaction(Value).GetIZTransaction
+    else Txn := nil;
+    if CachedResolver <> nil then
+      CachedResolver.SetTransaction(Txn);
+  end;
+end;
+
+{ TZAbstractRWTxnUpdateObjDataSet }
+
+function TZAbstractRWTxnUpdateObjDataSet.CreateResultSet(const SQL: string;
+  MaxRows: Integer): IZResultSet;
+begin
+  Result := inherited CreateResultSet(SQL, MaxRows);
+  if (CachedResultSet <> nil) and (FUpdateObject <> nil) then begin
+    CachedResultSet.SetResolver(FUpdateObject);
+    SetTxns2Resolver(FUpdateObject);
+  end else SetTxns2Resolver(CachedResolver);
+end;
+
+destructor TZAbstractRWTxnUpdateObjDataSet.Destroy;
+begin
+  AfterCancel := nil;
+  BeforeCancel := nil;
+  if State in [dsEdit, dsInsert] then
+    Cancel;
+  if Assigned(FUpdateObject) then begin
+    FUpdateObject.DataSet := nil;
+    SetUpdateObject(nil);
+  end;
+  inherited Destroy;
+end;
+
+procedure TZAbstractRWTxnUpdateObjDataSet.Notification(AComponent: TComponent;
+  Operation: TOperation);
+begin
+  inherited Notification(AComponent, Operation);
+  if (Operation = opRemove) then begin
+    if (AComponent = FUpdateObject) then begin
+      Close;
+      SetUpdateObject(nil);
+    end;
+    if (AComponent = FSequence) then
+      FSequence := nil;
+  end;
+end;
+
+procedure TZAbstractRWTxnUpdateObjDataSet.SetUpdateObject(Value: TZUpdateSQL);
+var TempResolver: IZCachedResolver; //need a temporay interface to compare the resolvers
+begin
+  if FUpdateObject <> Value then begin
+    TempResolver := nil; //init
+    if Assigned(FUpdateObject) then begin
+      FUpdateObject.RemoveFreeNotification(Self);
+      { get a local interface ptr of old update object for comparesion below }
+      FUpdateObject.GetInterface(IZCachedResolver, TempResolver);
+    end;
+    FUpdateObject := Value;
+    if Assigned(FUpdateObject) then begin
+      FUpdateObject.FreeNotification(Self);
+      FUpdateObject.DataSet := Self;
+    end;
+    if FUpdateObject <> nil then
+      FGenDMLResolver := nil;
+    if Active and (CachedResultSet <> nil) then
+      if FUpdateObject <> nil then begin
+        { get a local interface of the component }
+        FUpdateObject.GetInterface(IZCachedResolver, TempResolver);
+        CachedResultSet.SetResolver(TempResolver);
+        SetTxns2Resolver(TempResolver);
+      end else begin
+        {EH: now test if the old FUpdateObject intf equals with current cached resolver }
+        if FCachedResolver = TempResolver then
+          { do not use this interface any more. Use the native resolver of
+            the cached RS instead. Otherwise on freeing (self) the compiler
+            attaches dead memory later on (this is hidded with FastMM in our tests f.e.)
+            -> Component interfaces are not refcounted by default}
+          FCachedResolver := CachedResultSet.GetNativeResolver;
+        CachedResultSet.SetResolver(FCachedResolver);
+        FCachedResolver.QueryInterface(IZGenerateSQLCachedResolver, FGenDMLResolver);
+        SetTxns2Resolver(FCachedResolver);
+      end;
+  end;
+end;
 
 end.
 

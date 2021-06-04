@@ -181,7 +181,7 @@ stDouble              DOUBLE PRECISION,
 stBigDecimal          DECIMAL(18,4),
 stString              CHAR(100),
 stUnicodeString       VARCHAR(255),
-stBytes               CHAR(100) CHARACTER SET OCTETS,
+stBytes               VARCHAR(100) CHARACTER SET OCTETS,
 stDate                DATE,
 stTime                TIME,
 stTimestamp           TIMESTAMP,
@@ -398,6 +398,24 @@ create or alter procedure abtest (
 returns (
     P4 integer,
     P5 varchar(20))
+as
+begin
+  P4 = P1 * 10 + P2;
+  P5 = P3 || P3;
+end
+^ 
+
+/*==============================================================*/
+/* Stored procedure: ABTEST_BIGINT                              */
+/*==============================================================*/
+
+create or alter procedure abtest_bigint (
+    P1 bigint,
+    P2 bigint,
+    P3 varchar(10))
+returns (
+    P4 bigint,
+    P5 varchar(30))
 as
 begin
   P4 = P1 * 10 + P2;

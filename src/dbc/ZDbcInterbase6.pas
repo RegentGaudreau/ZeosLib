@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -64,74 +64,199 @@ uses
 
 type
 
-  {** Implements Interbase6 Database Driver. }
+  /// <summary>Implements Interbase6 Database Driver.</summary>
   TZInterbase6Driver = class(TZInterbaseFirebirdDriver)
   public
+    /// <summary>Constructs this object with default properties.</summary>
     constructor Create; override;
+    /// <summary>Attempts to create a database connection to the given URL.
+    ///  The driver should return "null" if it realizes it is the wrong kind
+    ///  of driver to connect to the given URL. This will be common, as when
+    ///  the zeos driver manager is asked to connect to a given URL it passes
+    ///  the URL to each loaded driver in turn.
+    ///  The driver should raise a SQLException if it is the right
+    ///  driver to connect to the given URL, but has trouble loading the
+    ///  library. </summary>
+    ///  <param> url the TZURL Object used to find the Driver, it's library and
+    ///    assigns the connection properties.</param>
+    ///  <returns> a <c>IZConnection</c> interface that represents a
+    ///    connection to the URL</returns>
     function Connect(const Url: TZURL): IZConnection; override;
   end;
 
+  /// <summary>Defines a interbase specific transaction interface.</summary>
   IZIBTransaction = interface(IZInterbaseFirebirdTransaction)
     ['{FACB5CA2-4400-470E-A1DC-ECE29CDE4E6F}']
+    /// <summary>Get Interbase transaction handle.</summary>
+    /// <returns>the transaction handle</summary>
     function GetTrHandle: PISC_TR_HANDLE;
   end;
 
-  {** Represents a Interbase specific connection interface. }
+  /// <summary>Defines an Interbase specific connection interface. }
   IZInterbase6Connection = interface (IZInterbaseFirebirdConnection)
     ['{E870E4FE-21EB-4725-B5D8-38B8A2B12D0B}']
+    /// <summary>Get database connection handle.</summary>
+    /// <returns>the database handle</returns>
     function GetDBHandle: PISC_DB_HANDLE;
+    /// <summary>Get Interbase transaction handle.</summary>
+    /// <returns>the transaction handle</summary>
     function GetTrHandle: PISC_TR_HANDLE;
     function GetActiveTransaction: IZIBTransaction;
+    /// <summary>Get the Interbase/Firebird legacy plaindriver.</summary>
+    /// <returns>the Plaindriver object</summary>
     function GetPlainDriver: TZInterbasePlainDriver;
+    /// <summary>Retrieve an interbase server integer</summary>
+    /// <param>"isc_info" a ISC_INFO_XXX number</param>
+    /// <param>"Sender" the calling object</param>
+    /// <returns>the ISC_INFO Integer</returns>
     function GetDBIntegerInfo(isc_info: Byte; const Sender: IImmediatelyReleasable): Integer;
+    /// <summary>Get an interbase server string</summary>
+    /// <param>isc_info an ISC_INFO_XXX number</param>
+    /// <param>sender the calling object</param>
+    /// <returns>an ISC_INFO string</returns>
     function GetDBStringInfo(isc_info: Byte; const Sender: IImmediatelyReleasable): String;
   end;
 
-  {** Implements Interbase6 Database Connection. }
-
-  { TZInterbase6Connection }
+  /// <summary>Implements Interbase6 Database Connection object</summary>
   TZInterbase6Connection = class(TZInterbaseFirebirdConnection, IZConnection,
-    IZInterbase6Connection, IZTransactionManager, IZInterbaseFirebirdConnection)
+    IZInterbase6Connection, IZTransactionManager, IZInterbaseFirebirdConnection,
+    IZEventListener, IZFirebirdInterbaseEventAlerter)
   private
     FHandle: TISC_DB_HANDLE;
     FStatusVector: TARRAY_ISC_STATUS;
     FPlainDriver: TZInterbasePlainDriver;
   protected
+    /// <summary>Releases a Connection's database and resources immediately
+    ///  instead of waiting for them to be automatically released.</summary>
+    ///  Note: A Connection is automatically closed when it is garbage
+    ///  collected. Certain fatal errors also result in a closed Connection.</summary>
     procedure InternalClose; override;
+    class function GetEventListClass: TZFirebirdInterbaseEventListClass; override;
   public
     procedure ExecuteImmediat(const SQL: RawByteString; LoggingCategory: TZLoggingCategory); overload; override;
     procedure ExecuteImmediat(const SQL: RawByteString; ISC_TR_HANDLE: PISC_TR_HANDLE; LoggingCategory: TZLoggingCategory); overload;
   public
     procedure AfterConstruction; override;
   public
+    /// <summary>Determine if the Client lib-module is a Firebird lib</summary>
+    /// <returns><c>True</c>If it's a Firebird client lib; <c>False</c>
+    ///  otherwise</returns>
     function IsFirebirdLib: Boolean; override;
+    /// <summary>Determine if the Client lib-module is a Interbase lib</summary>
+    /// <returns><c>True</c>If it's a Interbase client lib; <c>False</c>
+    ///  otherwise</returns>
     function IsInterbaseLib: Boolean; override;
+  public { implement IZInterbase6Connection }
+    /// <summary>Get database connection handle.</summary>
+    /// <returns>the database handle</returns>
     function GetDBHandle: PISC_DB_HANDLE;
+    /// <summary>Get Interbase transaction handle.</summary>
+    /// <returns>the transaction handle</summary>
     function GetTrHandle: PISC_TR_HANDLE;
     function GetActiveTransaction: IZIBTransaction;
+    /// <summary>Get the Interbase/Firebird legacy plaindriver.</summary>
+    /// <returns>the Plaindriver object</summary>
     function GetPlainDriver: TZInterbasePlainDriver;
+    /// <summary>Retrieve an interbase server integer</summary>
+    /// <param>"isc_info" a ISC_INFO_XXX number</param>
+    /// <param>"Sender" the calling object</param>
+    /// <returns>the ISC_INFO Integer</returns>
     function GetDBIntegerInfo(isc_info: Byte; const Sender: IImmediatelyReleasable): Integer;
+    /// <summary>Get an interbase server string</summary>
+    /// <param>isc_info an ISC_INFO_XXX number</param>
+    /// <param>sender the calling object</param>
+    /// <returns>an ISC_INFO string</returns>
     function GetDBStringInfo(isc_info: Byte; const Sender: IImmediatelyReleasable): String;
   public { IZTransactionManager }
     function CreateTransaction(AutoCommit, ReadOnly: Boolean;
       TransactIsolationLevel: TZTransactIsolationLevel; Params: TStrings): IZTransaction;
   public
+    /// <summary>Creates a <c>Statement</c> interface for sending SQL statements
+    ///  to the database. SQL statements without parameters are normally
+    ///  executed using Statement objects. If the same SQL statement
+    ///  is executed many times, it is more efficient to use a
+    ///  <c>PreparedStatement</c> object. Result sets created using the returned
+    ///  <c>Statement</c> interface will by default have forward-only type and
+    ///  read-only concurrency.</summary>
+    /// <param>Info a statement parameters.</param>
+    /// <returns>A new Statement interface</returns>
     function CreateStatementWithParams(Info: TStrings): IZStatement;
+    /// <summary>Creates a <c>PreparedStatement</c> interface for sending
+    ///  parameterized SQL statements to the database. A SQL statement with
+    ///  or without IN parameters can be pre-compiled and stored in a
+    ///  PreparedStatement object. This object can then be used to efficiently
+    ///  execute this statement multiple times.
+    ///  Note: This method is optimized for handling parametric SQL statements
+    ///  that benefit from precompilation. If the driver supports
+    ///  precompilation, the method <c>prepareStatement</c> will send the
+    ///  statement to the database for precompilation. Some drivers may not
+    ///  support precompilation. In this case, the statement may not be sent to
+    ///  the database until the <c>PreparedStatement</c> is executed. This has
+    ///  no direct effect on users; however, it does affect which method throws
+    ///  certain SQLExceptions. Result sets created using the returned
+    ///  PreparedStatement will have forward-only type and read-only
+    ///  concurrency, by default.</summary>
+    /// <param>"SQL" a SQL statement that may contain one or more '?' IN
+    ///  parameter placeholders.</param>
+    /// <param> Info a statement parameter list.</param>
+    /// <returns> a new PreparedStatement object containing the
+    ///  optional pre-compiled statement</returns>
     function PrepareStatementWithParams(const SQL: string; Info: TStrings):
       IZPreparedStatement;
-    function PrepareCallWithParams(const Name: String; Info: TStrings):
+    /// <summary>Creates a <code>CallableStatement</code> object for calling
+    ///  database stored procedures. The <code>CallableStatement</code> object
+    ///  provides methods for setting up its IN and OUT parameters, and methods
+    ///  for executing the call to a stored procedure. Note: This method is
+    ///  optimized for handling stored procedure call statements. Some drivers
+    ///  may send the call statement to the database when the method
+    ///  <c>prepareCall</c> is done; others may wait until the
+    ///  <c>CallableStatement</c> object is executed. This has no direct effect
+    ///  on users; however, it does affect which method throws certain
+    ///  EZSQLExceptions. Result sets created using the returned
+    ///  IZCallableStatement will have forward-only type and read-only
+    ///  concurrency, by default.</summary>
+    /// <param>"Name" a procedure or function name.</param>
+    /// <param>"Params" a statement parameters list.</param>
+    /// <returns> a new IZCallableStatement interface containing the
+    ///  pre-compiled SQL statement </returns>
+    function PrepareCallWithParams(const Name: String; Params: TStrings):
       IZCallableStatement;
-
+    /// <summary>Checks if a connection is still alive by doing a call to
+    ///  isc_database_info It does not matter what info we request, we are not
+    ///  looking at it, as long as it is something which should _always_ work if
+    ///  the connection is there. We check if the error returned is one of the
+    ///  net_* errors described in the firebird client documentation
+    ///  (isc_network_error .. isc_net_write_err).</summary>
+    /// <returns>0 if the connection is OK, non zero if the connection is not OK</returns>
     function PingServer: Integer; override;
+    /// <author>aehimself</author>
+    /// <summary>Immediately abort any kind of queries.</summary>
+    /// <returns>0 if the operation is aborted; Non zero otherwise.</returns>
     function AbortOperation: Integer; override;
-
+    /// <summary>Opens a connection to database server with specified parameters.</summary>
     procedure Open; override;
-
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable;
       var AError: EZSQLConnectionLost); override;
+  public { implement IZEventListener}
+    /// <summary>Starts listening the events.</summary>
+    /// <param>"EventNames" a list of event name to be listened.</param>
+    /// <param>"Handler" an event handler which gets triggered if the event is received.</param>
+    procedure Listen(const EventNames: TStrings; Handler: TZOnEventHandler);
   end;
 
-  {** EH: implements a IB/FB transaction }
+  /// <author>EgonHugeist</author>
+  /// <summary>implements a IB/FB transaction using legacy api</summary>
   TZIBTransaction = class(TZInterbaseFirebirdTransaction,
     IZTransaction, IZIBTransaction, IZInterbaseFirebirdTransaction)
   private
@@ -141,16 +266,74 @@ type
     function TxnIsStarted: Boolean; override;
     function TestCachedResultsAndForceFetchAll: Boolean; override;
   public { IZTransaction }
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  released. Otherwise makes all changes made since the previous commit/
+    ///  rollback permanent and releases any database locks currently held by
+    ///  the Connection. This method should be used only when auto-commit mode
+    ///  has been disabled. If Option "Hard_Commit" is set to true or
+    ///  TestCachedResultsAndForceFetchAll returns <c>True</c> the transaction
+    ///  is committed. Otherwise if "Hard_Commit" isn't set to true a
+    ///  retained_commit is performed, and the txn get's removed from the
+    ///  transaction manger. Later if all streams are closed a final
+    ///  commit is called to release the garbage.</summary>
     procedure Commit;
+    /// <summary>Perform a "hard" Commit or Rollback as retained done by User
+    ///  before. Removes this interface from Parent-Transaction manager.
+    ///  Releases a transaction and resources immediately
+    ///  instead of waiting for them to be automatically released. If the
+    ///  transaction is underway a rollback will be done. Note: A
+    ///  Transaction is automatically closed when the Conenction closes or it is
+    ///  garbage collected. Certain fatal errors also result in a closed
+    //// Transaction.</summary>
     procedure Close;
+    /// <summary>Get's the owner connection that produced that object instance.
+    /// </summary>
+    /// <returns>the connection object interface.</returns>
     function GetConnection: IZConnection;
     function IsClosed: Boolean;
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  rolled back. Otherwise drops all changes made since the previous
+    ///  commit/rollback and releases any database locks currently held
+    ///  by this Connection. This method should be used only when auto-
+    ///  commit has been disabled. If Option "Hard_Commit" is set to true
+    ///  or TestCachedResultsAndForceFetchAll returns <c>True</c> the
+    ///  transaction is rolled back. Otherwise if "Hard_Commit" isn't set
+    ///  to true a retained_rollback is performed, and the txn get's removed
+    ///  from the transaction manger. Later if all streams are closed a final
+    ///  rollback is called to release the garbage.</summary>
     procedure Rollback;
+    /// <summary>Starts transaction support or saves the current transaction.
+    ///  If the connection is closed, the connection will be opened.
+    ///  If a transaction is underway a nested transaction or a savepoint will
+    ///  be spawned. While the tranaction(s) is/are underway the AutoCommit
+    ///  property is set to False. Ending up the transaction with a
+    ///  commit/rollback the autocommit property will be restored if changing
+    ///  the autocommit mode was triggered by a starttransaction call.</summary>
+    /// <returns>Returns the current txn-level. 1 means a expicit transaction
+    ///  was started. 2 means the transaction was saved. 3 means the previous
+    ///  savepoint got saved too and so on.</returns>
     function StartTransaction: Integer;
   public { IZIBTransaction }
     procedure DoStartTransaction;
     function GetTrHandle: PISC_TR_HANDLE;
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost); override;
+  end;
+
+  TZIBLegacyEventList = class(TZFirebirdInterbaseEventList)
+  public
+    procedure AsyncQueEvents(EventBlock: PZInterbaseFirebirdEventBlock); override;
+    procedure UnregisterEvents; override;
   end;
 
 var
@@ -169,37 +352,11 @@ uses ZFastCode, ZEncoding, ZMessages,
 
 { TZInterbase6Driver }
 
-{**
-  Attempts to make a database connection to the given URL.
-  The driver should return "null" if it realizes it is the wrong kind
-  of driver to connect to the given URL.  This will be common, as when
-  the JDBC driver manager is asked to connect to a given URL it passes
-  the URL to each loaded driver in turn.
-
-  <P>The driver should raise a SQLException if it is the right
-  driver to connect to the given URL, but has trouble connecting to
-  the database.
-
-  <P>The java.util.Properties argument can be used to passed arbitrary
-  string tag/value pairs as connection arguments.
-  Normally at least "user" and "password" properties should be
-  included in the Properties.
-
-  @param url the URL of the database to which to connect
-  @param info a list of arbitrary string tag/value pairs as
-    connection arguments. Normally at least a "user" and
-    "password" property should be included.
-  @return a <code>Connection</code> object that represents a
-    connection to the URL
-}
 function TZInterbase6Driver.Connect(const Url: TZURL): IZConnection;
 begin
   Result := TZInterbase6Connection.Create(Url);
 end;
 
-{**
-  Constructs this object with default properties.
-}
 constructor TZInterbase6Driver.Create;
 begin
   inherited Create;
@@ -223,15 +380,6 @@ Begin
  end else Result := 1 //abort opertion is not supported by the current client library
 End;
 
-{**
-  Releases a Connection's database and JDBC resources
-  immediately instead of waiting for
-  them to be automatically released.
-
-  <P><B>Note:</B> A Connection is automatically closed when it is
-  garbage collected. Certain fatal errors also result in a closed
-  Connection.
-}
 procedure TZInterbase6Connection.InternalClose;
 var Status: ISC_Status;
 begin
@@ -281,43 +429,40 @@ begin
   else CreateStatement.ExecuteUpdate(SQL)
 end;
 
-{**
-  Determines wether the client library is Firebird. Works for Firebird 1.5+
-  Note that this Function cannot reliably determine wether you are on interbase.
-  Use IsInterbaseLib for that.
-}
 function TZInterbase6Connection.IsFirebirdLib: Boolean;
 begin
   if FClientVersion = -1 then DetermineClientTypeAndVersion;
   Result := FIsFirebirdLib;
 end;
 
-{**
-  Determines wether the client library is Firebird. Works for Interbase 7.0+
-  Note that this Function cannot reliably determine wether you are on interbase.
-  Use IsInterbaseLib for that.
-}
 function TZInterbase6Connection.IsInterbaseLib: Boolean;
 begin
   if FClientVersion = -1 then DetermineClientTypeAndVersion;
   Result := FIsInterbaseLib;
 end;
 
-{**
-   Get database connection handle.
-   @return database handle
-}
+procedure TZInterbase6Connection.Listen(const EventNames: TStrings;
+  Handler: TZOnEventHandler);
+var I: Integer;
+begin
+  if (FEventList <> nil) then begin
+    if (FEventList.Count > 0) then
+      Unlisten;
+    if IsClosed then
+      Open;
+    for i := 0 to EventNames.Count -1 do
+      FEventList.Add(EventNames[I], Handler);
+    FEventList.RegisterEvents;
+  end else
+    raise EZSQLException.Create('no events registered');
+end;
+
 function TZInterbase6Connection.GetDBHandle: PISC_DB_HANDLE;
 begin
   Result := @FHandle;
 end;
 
-{**
-   Return interbase server integer
-   @param isc_info a ISC_INFO_XXX number
-   @param sender the calling object
-   @return ISC_INFO Integer
-}
+{$IFDEF WITH_NOT_INLINED_WARNING}{$PUSH}{$WARN 6058 off : Call to subroutine "ReadInterbase6Number" marked as inline is not inlined}{$ENDIF}
 function TZInterbase6Connection.GetDBIntegerInfo(isc_info: Byte;
   const Sender: IImmediatelyReleasable): Integer;
 begin
@@ -330,16 +475,11 @@ begin
       3..N  - number
       N+1   - #1 }
   if FByteBuffer[0] = isc_info
-  then Result := ReadInterbase6Number(FPlainDriver, FByteBuffer[1])
+  then Result := ReadInterbase6Number(FPlainDriver, @FByteBuffer[1])
   else Result := -1;
 end;
+{$IFDEF WITH_NOT_INLINED_WARNING}{$POP}{$ENDIF}
 
-{**
-   Return interbase server string
-   @param isc_info a ISC_INFO_XXX number
-   @param sender the calling object
-   @return ISC_INFO string
-}
 function TZInterbase6Connection.GetDBStringInfo(isc_info: Byte;
   const Sender: IImmediatelyReleasable): String;
 begin
@@ -360,10 +500,11 @@ begin
   else Result := '';
 end;
 
-{**
-   Get Interbase transaction handle
-   @return transaction handle
-}
+class function TZInterbase6Connection.GetEventListClass: TZFirebirdInterbaseEventListClass;
+begin
+  Result := TZIBLegacyEventList;
+end;
+
 function TZInterbase6Connection.GetTrHandle: PISC_TR_HANDLE;
 begin
   if not Closed
@@ -378,9 +519,6 @@ begin
   inherited AfterConstruction;
 end;
 
-{**
-  Opens a connection to database server with specified parameters.
-}
 procedure TZInterbase6Connection.Open;
 var
   DPB: RawByteString;
@@ -433,8 +571,9 @@ begin
   FHandle := 0;
   DBCreated := False;
   { Create new db if needed }
-  if (Info.Values[ConnProps_CreateNewDatabase] <> '') then begin
-    CreateDB := Info.Values[ConnProps_CreateNewDatabase];
+  CreateDB := Info.Values[ConnProps_CreateNewDatabase];
+  CreateDB := Trim(CreateDB);
+  if (CreateDB <> '') then begin
     if (GetClientVersion >= 2005000) and IsFirebirdLib and (Length(CreateDB)<=4) and StrToBoolEx(CreateDB, False) then begin
       if (Info.Values[ConnProps_isc_dpb_lc_ctype] <> '') and (Info.Values[ConnProps_isc_dpb_set_db_charset] = '') then
         Info.Values[ConnProps_isc_dpb_set_db_charset] := Info.Values[ConnProps_isc_dpb_lc_ctype];
@@ -447,6 +586,22 @@ begin
       if DriverManager.HasLoggingListener then
         DriverManager.LogMessage(lcConnect, URL.Protocol, FLogMessage);
     end else begin
+      DBCP := Uppercase(CreateDB);
+      I := PosEx('CREATE', DBCP);
+      if (I < 1) or (PosEx('DATABASE', DBCP) < 1) then begin
+        DBCP := QuotedStr(URL.Database);
+        CreateDB := 'CREATE DATABASE '+DBCP;
+        DBCP := QuotedStr(URL.UserName);
+        CreateDB := CreateDB + ' USER '+DBCP;
+        DBCP := QuotedStr(URL.Password);
+        CreateDB := CreateDB + ' PASSWORD '+DBCP;
+        DBCP := Info.Values[ConnProps_isc_dpb_page_size];
+        if DBCP <> '' then
+          CreateDB := CreateDb + ' page_size '+FClientCodePage;
+        if FClientCodePage <> '' then
+          CreateDB := CreateDb + ' CHARACTER SET '+FClientCodePage;
+      end;
+      DBCP := '';
       {$IFDEF UNICODE}
       DPB := ZUnicodeToRaw(CreateDB, zOSCodePage);
       {$ELSE}
@@ -580,14 +735,20 @@ reconnect:
     end;
   end else if FClientCodePage = '' then
     CheckCharEncoding(DBCP);
+  if (FHostVersion >= 4000000) then begin
+    if (Info.Values[ConnProps_isc_dpb_session_time_zone] = '') then
+      ExecuteImmediat('SET TIME ZONE LOCAL', lcExecute);
+    ExecuteImmediat('SET BIND OF TIME ZONE TO LEGACY', lcExecute);
+    ExecuteImmediat('SET BIND OF DECFLOAT TO LEGACY', lcExecute);
+    ti := GetActiveTransaction;
+    try
+      ti.Close;
+    finally
+      ti := nil;
+    end;
+  end;
 end;
 
-{**
-  release all handles immeditaely on connection loss
-  @param Sender the caller where the connection loss did happen first
-    also to be used as comparsion with other IImmediatelyReleasable objects
-    to avoid circular calls
-}
 procedure TZInterbase6Connection.ReleaseImmediat(
   const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost);
 var ImmediatelyReleasable: IImmediatelyReleasable;
@@ -605,15 +766,6 @@ begin
   inherited ReleaseImmediat(Sender, AError);
 end;
 
-{**
-  Checks if a connection is still alive by doing a call to isc_database_info
-  It does not matter what info we request, we are not looking at it, as long
-  as it is something which should _always_ work if the connection is there.
-  We check if the error returned is one of the net_* errors described in the
-  firebird client documentation (isc_network_error .. isc_net_write_err).
-  Returns 0 if the connection is OK
-  Returns non zero if the connection is not OK
-}
 function TZInterbase6Connection.PingServer: integer;
 var
   DatabaseInfoCommand: Char;
@@ -631,68 +783,14 @@ begin
   end;
 end;
 
-{**
-  Creates a <code>CallableStatement</code> object for calling
-  database stored procedures.
-  The <code>CallableStatement</code> object provides
-  methods for setting up its IN and OUT parameters, and
-  methods for executing the call to a stored procedure.
-
-  <P><B>Note:</B> This method is optimized for handling stored
-  procedure call statements. Some drivers may send the call
-  statement to the database when the method <code>prepareCall</code>
-  is done; others
-  may wait until the <code>CallableStatement</code> object
-  is executed. This has no
-  direct effect on users; however, it does affect which method
-  throws certain SQLExceptions.
-
-  Result sets created using the returned CallableStatement will have
-  forward-only type and read-only concurrency, by default.
-
-  @param Name a procedure or function identifier
-    parameter placeholders. Typically this  statement is a JDBC
-    function call escape string.
-  @param Info a statement parameters.
-  @return a new CallableStatement object containing the
-    pre-compiled SQL statement
-}
 function TZInterbase6Connection.PrepareCallWithParams(const Name: String;
-  Info: TStrings): IZCallableStatement;
+  Params: TStrings): IZCallableStatement;
 begin
   if IsClosed then
     Open;
-  Result := TZInterbase6CallableStatement.Create(Self, Name, Info);
+  Result := TZInterbase6CallableStatement.Create(Self, Name, Params);
 end;
 
-{**
-  Creates a <code>PreparedStatement</code> object for sending
-  parameterized SQL statements to the database.
-
-  A SQL statement with or without IN parameters can be
-  pre-compiled and stored in a PreparedStatement object. This
-  object can then be used to efficiently execute this statement
-  multiple times.
-
-  <P><B>Note:</B> This method is optimized for handling
-  parametric SQL statements that benefit from precompilation. If
-  the driver supports precompilation,
-  the method <code>prepareStatement</code> will send
-  the statement to the database for precompilation. Some drivers
-  may not support precompilation. In this case, the statement may
-  not be sent to the database until the <code>PreparedStatement</code> is
-  executed.  This has no direct effect on users; however, it does
-  affect which method throws certain SQLExceptions.
-
-  Result sets created using the returned PreparedStatement will have
-  forward-only type and read-only concurrency, by default.
-
-  @param sql a SQL statement that may contain one or more '?' IN
-    parameter placeholders
-  @param Info a statement parameters.
-  @return a new PreparedStatement object containing the
-    pre-compiled statement
-}
 function TZInterbase6Connection.PrepareStatementWithParams(const SQL: string;
   Info: TStrings): IZPreparedStatement;
 begin
@@ -714,20 +812,6 @@ begin
     Result := nil;
 end;
 
-{**
-  Creates a <code>Statement</code> object for sending
-  SQL statements to the database.
-  SQL statements without parameters are normally
-  executed using Statement objects. If the same SQL statement
-  is executed many times, it is more efficient to use a
-  <code>PreparedStatement</code> object.
-  <P>
-  Result sets created using the returned <code>Statement</code>
-  object will by default have forward-only type and read-only concurrency.
-
-  @param Info a statement parameters.
-  @return a new Statement object
-}
 function TZInterbase6Connection.CreateStatementWithParams(
   Info: TStrings): IZStatement;
 begin
@@ -763,13 +847,6 @@ begin
   end;
 end;
 
-{**
-  Makes all changes made since the previous
-  commit/rollback permanent and releases any database locks
-  currently held by the Connection. This method should be
-  used only when auto-commit mode has been disabled.
-  @see #setAutoCommit
-}
 procedure TZIBTransaction.Commit;
 var Status: ISC_STATUS;
   S: RawByteString;
@@ -829,13 +906,6 @@ begin
   inherited;
 end;
 
-{**
-  Drops all changes made since the previous
-  commit/rollback and releases any database locks currently held
-  by this Connection. This method should be used only when auto-
-  commit has been disabled.
-  @see #setAutoCommit
-}
 procedure TZIBTransaction.Rollback;
 var Status: ISC_STATUS;
   S: RawByteString;
@@ -864,18 +934,6 @@ begin
   end;
 end;
 
-{**
-  Starts transaction support or saves the current transaction.
-  If the connection is closed, the connection will be opened.
-  If a transaction is underway a nested transaction or a savepoint will be
-  spawned. While the tranaction(s) is/are underway the AutoCommit property is
-  set to False. Ending up the transaction with a commit/rollback the autocommit
-  property will be restored if changing the autocommit mode was triggered by a
-  starttransaction call.
-  @return the current txn-level. 1 means a transaction was started.
-  2 means the transaction was saved. 3 means the previous savepoint got saved
-  too and so on
-}
 function TZIBTransaction.StartTransaction: Integer;
 var S: String;
 begin
@@ -920,6 +978,51 @@ end;
 function TZIBTransaction.TxnIsStarted: Boolean;
 begin
   Result := FTrHandle <> 0
+end;
+
+{ TZInterbaseFirebirdLegacyEventBlockList }
+
+procedure EventCallback(UserData: PVoid; Length: ISC_USHORT; Updated: PISC_UCHAR); cdecl;
+var EventBlock: PZInterbaseFirebirdEventBlock absolute UserData;
+begin
+  if (Assigned(UserData) and Assigned(Updated) and (Length > 0)) then begin
+    {$IFDEF FAST_MOVE}ZFastCode{$ELSE}System{$ENDIF}.Move(Updated^, EventBlock.result_buffer^, Length);
+    EventBlock.ProcessEvents(EventBlock);
+    EventBlock.AsyncQueEvents(EventBlock);
+    EventBlock.FirstTime := False
+  end;
+end;
+
+{ TZIBLegacyEventList }
+
+procedure TZIBLegacyEventList.AsyncQueEvents(
+  EventBlock: PZInterbaseFirebirdEventBlock);
+begin
+  with TZInterbase6Connection(Connection) do
+    if FPlainDriver.isc_que_events(@FStatusVector,
+      @FHandle, @EventBlock.event_id, EventBlock.buffer_length,
+      EventBlock.event_buffer, TISC_CALLBACK(@EventCallback), PVoid(EventBlock)) <> 0 then
+        HandleErrorOrWarning(lcOther, @FStatusVector, 'isc_que_events', IImmediatelyReleasable(FWeakImmediatRelPtr));
+end;
+
+procedure TZIBLegacyEventList.UnregisterEvents;
+var EventBlockIdx: NativeInt;
+    EventBlock: PZInterbaseFirebirdEventBlock;
+    Status: ISC_STATUS;
+begin
+  with TZInterbase6Connection(Connection) do try
+    for EventBlockIdx := 0 to High(FEventBlocks) do begin
+      EventBlock := @FEventBlocks[EventBlockIdx];
+      EventBlock.FirstTime := True;
+      Status := FPlainDriver.isc_cancel_events(@FStatusVector, @FHandle, @EventBlock.event_id);
+      FPlainDriver.isc_free(EventBlock.event_buffer);
+      FPlainDriver.isc_free(EventBlock.result_buffer);
+      if Status <> 0 then
+        HandleErrorOrWarning(lcOther, @FStatusVector, 'isc_que_events', IImmediatelyReleasable(FWeakImmediatRelPtr));
+    end;
+  finally
+    SetLength(FEventBlocks, 0);
+  end;
 end;
 
 initialization

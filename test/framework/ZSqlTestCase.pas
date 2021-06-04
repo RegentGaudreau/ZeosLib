@@ -61,6 +61,7 @@ uses
   {$IFNDEF VER130BELOW}Types, {$ENDIF} {$IFDEF FPC}fpcunit{$ELSE}TestFramework{$ENDIF},
   Classes, SysUtils, DB, Contnrs, FmtBCD,
   ZDataset, ZDatasetUtils, ZAbstractConnection,
+  {$IFNDEF DISABLE_ZPARAM}ZDatasetParam,{$ENDIF}
   ZCompatibility, ZDbcIntfs, ZConnection, ZTestCase, ZScriptParser, ZDbcLogging;
 
 const
@@ -334,11 +335,13 @@ type
     procedure CheckEquals(const OrgStr: UnicodeString; Actual: TField; const Msg: string = ''); overload;
     procedure CheckEquals(Expected, Actual: TFieldType;
       const Msg: string = ''); overload;
+    procedure CheckEquals(Expected, Actual: TParamType;
+      const Msg: string = ''); overload;
     procedure CheckNotEquals(Expected, Actual: TFieldType;
       const Msg: string = ''); overload;
     procedure CheckStringFieldType(Actual: TField; ControlsCodePage: TZControlsCodePage);
-    procedure CheckStringParamType(Actual: TParam; ControlsCodePage: TZControlsCodePage);
-    procedure CheckMemoParamType(Actual: TParam; ControlsCodePage: TZControlsCodePage);
+    procedure CheckStringParamType(Actual: {$IFNDEF DISABLE_ZPARAM}TZParam{$ELSE}TParam{$ENDIF}; ControlsCodePage: TZControlsCodePage);
+    procedure CheckMemoParamType(Actual: {$IFNDEF DISABLE_ZPARAM}TZParam{$ELSE}TParam{$ENDIF}; ControlsCodePage: TZControlsCodePage);
     procedure CheckMemoFieldType(Actual: TField; ControlsCodePage: TZControlsCodePage);
   end;
 
@@ -459,7 +462,6 @@ begin
   Result.UserName := UserName;
   Result.Password := Password;
   Result.LibLocation := LibLocation;
-
   for I := 0 to High(Properties) do
     Result.Properties.Add(Properties[I]);
   Result.Properties.Add(Param);
@@ -578,7 +580,13 @@ constructor TZConnectionConfig.Create(ConnectionName: String);
 begin
   Create;
   FName := ConnectionName;
-  FLibLocation := TestConfig.ReadProperty(FName, DATABASE_LIBLOCATION_KEY, '');
+  {$IFDEF CPU64}
+  FLibLocation := TestConfig.ReadProperty(FName, DATABASE_LIBLOCATION_KEY64, '');
+  {$ELSE}
+  FLibLocation := TestConfig.ReadProperty(FName, DATABASE_LIBLOCATION_KEY32, '');
+  {$ENDIF}
+  if FLibLocation = '' then
+    FLibLocation := TestConfig.ReadProperty(FName, DATABASE_LIBLOCATION_KEY, '');
   FAlias := TestConfig.ReadProperty(FName, DATABASE_ALIAS_KEY, '');
   FProtocol := TestConfig.ReadProperty(FName, DATABASE_PROTOCOL_KEY, '');
   FHostName := TestConfig.ReadProperty(FName, DATABASE_HOST_KEY,
@@ -1109,10 +1117,12 @@ begin
   DriverManager.RemoveLoggingListener(Self);
 end;
 
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Config" not used} {$ENDIF}
 function TZAbstractSQLTestCase.SupportsConfig(Config: TZConnectionConfig): Boolean;
 begin
   Result := true;
 end;
+{$IFDEF FPC} {$POP} {$ENDIF}
 
 
 {$IFNDEF FPC}
@@ -1351,16 +1361,19 @@ end;
 {**
   Handles exceptions in SQL script processing and raise them.
 }
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "$" not used} {$ENDIF}
 procedure TZSupplementarySQLTestCase.RaiseError(Processor: TZSQLProcessor;
   StatementIndex: Integer; E: Exception;
   var ErrorHandleAction: TZErrorHandleAction);
 begin
   ErrorHandleAction := eaFail;
 end;
+{$IFDEF FPC} {$POP} {$ENDIF}
 
 {**
   Handles exceptions in SQL script processing and suppress them.
 }
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "IsNegative" not used} {$ENDIF}
 procedure TZSupplementarySQLTestCase.SuppressError(
   Processor: TZSQLProcessor; StatementIndex: Integer; E: Exception;
   var ErrorHandleAction: TZErrorHandleAction);
@@ -1368,6 +1381,7 @@ begin
   System.WriteLn('Database Rebuild Error: ' + E.Message);
   ErrorHandleAction := eaSkip;
 end;
+{$IFDEF FPC} {$POP} {$ENDIF}
 
 {**
   Executes a list of SQL scripts.
@@ -1462,7 +1476,7 @@ procedure TZAbstractDbcSQLTestCase.CheckNotEquals(Expected, Actual: TZSQLType;
 var E, A: String;
 begin
   E := TypInfo.GetEnumName(TypeInfo(TZSQLType), Ord(Expected));
-  A := TypInfo.GetEnumName(TypeInfo(TZSQLType), Ord(Expected));
+  A := TypInfo.GetEnumName(TypeInfo(TZSQLType), Ord(Actual));
   inherited CheckNotEquals(E, A, Msg);
 end;
 
@@ -1485,7 +1499,7 @@ procedure TZAbstractDbcSQLTestCase.CheckEquals(Expected, Actual: TZSQLType;
 var E, A: String;
 begin
   E := TypInfo.GetEnumName(TypeInfo(TZSQLType), Ord(Expected));
-  A := TypInfo.GetEnumName(TypeInfo(TZSQLType), Ord(Expected));
+  A := TypInfo.GetEnumName(TypeInfo(TZSQLType), Ord(Actual));
   inherited CheckEquals(E, A, Msg);
 end;
 
@@ -1526,7 +1540,7 @@ begin
   end else {$ENDIF}begin
     Check(Actual.InheritsFrom(TMemoField), 'Should be a MemoField');
     if TMemoField(Actual).Transliterate or (ConSettings.ClientCodePage.Encoding = ceUTF16)
-    then SetAnsiStream(ZUnicodeToRaw(OrgStr, GetTransliterateCodePage(TZAbstractRODataset(Actual.DataSet).Connection.ControlsCodePage)))
+    then SetAnsiStream(ZUnicodeToRaw(OrgStr, GetTransliterateCodePage(THackDataSet(Actual.DataSet).Connection.ControlsCodePage)))
     else SetAnsiStream(ZUnicodeToRaw(OrgStr, ConSettings.ClientCodePage.CP))
   end;
   try
@@ -1543,9 +1557,10 @@ end;
    @param Actual the second stream for compare
    @param ConSettings the Connection given settings
 }
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Msg" not used} {$ENDIF}
 procedure TZAbstractCompSQLTestCase.CheckEquals(const OrgStr: UnicodeString;
   Actual: TField; const Msg: string = '');
-var ATemp, ATemp2: AnsiString;
+var ATemp, ATemp2: RawByteString;
     WTmp: UnicodeString;
     Stream: TMemoryStream;
     Idx, Size: Integer;
@@ -1621,7 +1636,9 @@ begin
     if (ColumnCP = zCP_UTF16) or (TStringField(Actual).Transliterate) then
       StringCP := GetTransliterateCodePage(ControlsCodepage);
     ATemp := ZUnicodeToRaw(OrgStr, StringCP);
-    ATemp2 := TStringField(Actual).{$IFDEF WITH_ASANSISTRING}AsAnsiString{$ELSE}AsString{$ENDIF};
+    if (StringCP = ZOSCodePage) or not Actual.InheritsFrom(TZRawStringField)
+    then ATemp2 := TStringField(Actual).{$IFDEF WITH_ASANSISTRING}AsAnsiString{$ELSE}AsString{$ENDIF}
+    else ATemp2 := TZRawStringField(Actual).AsUTF8String;
     CheckEquals(ATemp, Atemp2, Protocol+': The raw value of Field: '+Actual.FieldName);
     Check(ControlsCodePage in [cGET_ACP, {$IFNDEF UNICODE}cCP_UTF8,{$ENDIF}cDynamic], Protocol+': The FieldType-A type');
     CheckEquals(Size, Actual.Size, Protocol+': The Size of the StringField '+Actual.FieldName);
@@ -1646,7 +1663,9 @@ begin
     if (ColumnCP = zCP_UTF16) or (TMemoField(Actual).Transliterate and (StringCP <> ColumnCP))
     then ATemp := ZUnicodeToRaw(OrgStr, StringCP)
     else ATemp := ZUnicodeToRaw(OrgStr, ColumnCP);
-    ATemp2 := TStringField(Actual).{$IFDEF WITH_ASANSISTRING}AsAnsiString{$ELSE}AsString{$ENDIF};
+    if (StringCP = ZOSCodePage) or not Actual.InheritsFrom(TZRawCLobField)
+    then ATemp2 := TStringField(Actual).{$IFDEF WITH_ASANSISTRING}AsAnsiString{$ELSE}AsString{$ENDIF}
+    else ATemp2 := TZRawCLobField(Actual).AsUTF8String;
     CheckEquals(ATemp, Atemp2, Protocol+': The raw value of Field: '+Actual.FieldName);
     Check(ControlsCodePage in [cGET_ACP, {$IFNDEF UNICODE}cCP_UTF8,{$ENDIF}cDynamic], Protocol+' The FieldType-A type');
     Check((SQLType in [stAsciiStream, stUnicodeStream]) or ((SQLType in [stString, stUnicodeString]) and (Size <= 0)),
@@ -1654,13 +1673,14 @@ begin
   end else
     Check(False, Protocol+': wrong overload called');
 end;
+{$IFDEF FPC} {$POP} {$ENDIF}
 
 procedure TZAbstractCompSQLTestCase.CheckNotEquals(Expected, Actual: TFieldType;
   const Msg: string);
 var E, A: String;
 begin
   E := TypInfo.GetEnumName(TypeInfo(TFieldType), Ord(Expected));
-  A := TypInfo.GetEnumName(TypeInfo(TFieldType), Ord(Expected));
+  A := TypInfo.GetEnumName(TypeInfo(TFieldType), Ord(Actual));
   inherited CheckNotEquals(E, A, Msg);
 end;
 
@@ -1681,7 +1701,7 @@ begin
   end;
 end;
 
-procedure TZAbstractCompSQLTestCase.CheckMemoParamType(Actual: TParam;
+procedure TZAbstractCompSQLTestCase.CheckMemoParamType(Actual: {$IFNDEF DISABLE_ZPARAM}TZParam{$ELSE}TParam{$ENDIF};
   ControlsCodePage: TZControlsCodePage);
 begin
   case ControlsCodePage of
@@ -1693,7 +1713,7 @@ begin
   end;
 end;
 
-procedure TZAbstractCompSQLTestCase.CheckStringParamType(Actual: TParam;
+procedure TZAbstractCompSQLTestCase.CheckStringParamType(Actual: {$IFNDEF DISABLE_ZPARAM}TZParam{$ELSE}TParam{$ENDIF};
   ControlsCodePage: TZControlsCodePage);
 begin
   case ControlsCodePage of
@@ -1710,7 +1730,7 @@ procedure TZAbstractCompSQLTestCase.CheckEquals(Expected, Actual: TFieldType;
 var E, A: String;
 begin
   E := TypInfo.GetEnumName(TypeInfo(TFieldType), Ord(Expected));
-  A := TypInfo.GetEnumName(TypeInfo(TFieldType), Ord(Expected));
+  A := TypInfo.GetEnumName(TypeInfo(TFieldType), Ord(Actual));
   inherited CheckEquals(E, A, Msg);
 end;
 
@@ -1732,7 +1752,7 @@ end;
 
 function TZAbstractCompSQLTestCase.CreateQuery: TZQuery;
 begin
-  Result := TZQuery.Create(nil);
+  Result := TZQuery.Create(FConnection);
   Result.Connection := FConnection;
   { do not check for Include_RealPrepared, because it's allways true if set! }
   if StrToBoolEx(FConnection.Properties.Values[DSProps_PreferPrepared]) then
@@ -1741,7 +1761,7 @@ end;
 
 function TZAbstractCompSQLTestCase.CreateReadOnlyQuery: TZReadOnlyQuery;
 begin
-  Result := TZReadOnlyQuery.Create(nil);
+  Result := TZReadOnlyQuery.Create(FConnection);
   Result.Connection := FConnection;
   { do not check for Include_RealPrepared, because it's allways true if set! }
   if StrToBoolEx(FConnection.Properties.Values[DSProps_PreferPrepared]) then
@@ -1750,7 +1770,7 @@ end;
 
 function TZAbstractCompSQLTestCase.CreateTable: TZTable;
 begin
-  Result := TZTable.Create(nil);
+  Result := TZTable.Create(FConnection);
   Result.Connection := FConnection;
   { do not check for Include_RealPrepared, because it's allways true if set! }
   if StrToBoolEx(FConnection.Properties.Values[DSProps_PreferPrepared]) then
@@ -1780,6 +1800,15 @@ begin
   {$ENDIF}
   if (MaxLen > 0) and (Length(Result) > MaxLen) then
     SetLength(Result, MaxLen);
+end;
+
+procedure TZAbstractCompSQLTestCase.CheckEquals(Expected, Actual: TParamType;
+  const Msg: string);
+var E, A: String;
+begin
+  E := TypInfo.GetEnumName(TypeInfo(TParamType), Ord(Expected));
+  A := TypInfo.GetEnumName(TypeInfo(TParamType), Ord(Actual));
+  inherited CheckEquals(E, A, Msg);
 end;
 
 { TZAbstractDbcSQLTestCaseMBCs }

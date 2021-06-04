@@ -128,6 +128,13 @@ type
     procedure TestSF418_SortedFields;
     procedure TestSF418_IndexFieldNames;
     procedure TestSF434;
+    procedure TestSF310_JoinedUpdate_SetReadOnly;
+    procedure TestSF310_JoinedUpdate_ProviderFlags;
+    procedure TestSF469;
+    procedure TestSF493;
+    procedure TestSF495;
+    procedure TestSF498;
+    procedure TestSF499;
   end;
 
   {** Implements a bug report test case for core components with MBCs. }
@@ -150,7 +157,10 @@ uses
 {$IFNDEF VER130BELOW}
   Variants,
 {$ENDIF}
-  SysUtils, ZDatasetUtils, ZSysUtils, ZTestConsts, ZTestCase, ZDbcMetadata, ZEncoding;
+  SysUtils,
+  ZSysUtils, ZEncoding,
+  ZDbcMetadata, ZDbcProperties,
+  ZDatasetUtils, ZAbstractDataset, ZTestConsts, ZTestCase;
 
 { ZTestCompCoreBugReport }
 
@@ -1745,7 +1755,10 @@ begin
     Query.ExecSQL;
 
     Query.SQL.Text := 'INSERT INTO equipment (eq_id, eq_name) VALUES (:u, :u1)';
-    Query.ParamByName('u').AsString := IntToStr(TEST_ROW_ID - 2);
+    //EH: i don't understand the string assignment here. however..
+    if Query.Connection.DbcConnection.GetServerProvider = spASE
+    then Query.ParamByName('u').AsInteger := TEST_ROW_ID - 2
+    else Query.ParamByName('u').AsString := IntToStr(TEST_ROW_ID - 2);
     Query.ParamByName('u1').AsString := 'ab''cd''ef';
     Query.ExecSQL;
     Query.ParamByName('u').AsInteger := TEST_ROW_ID - 1;
@@ -1939,6 +1952,138 @@ begin
     Query.Params[0].AsString := 'A%';
     Query.Open;
     CheckEquals(2, Query.RecordCount, 'there are two rows');
+  finally
+    Query.Free;
+  end;
+end;
+
+{Assume the following code:
+
+Query.SQL.Text := 'select * from users where userid = :userid';
+Query.ParamByName('userid').AsString := 'abc';
+Query.SQL.Text := 'select * from users where username = :userid';
+
+It seems that the third line reinitializes the parameter values to be empty.
+This worked in the past. I am not sure, which revision introduced the change.
+}
+procedure ZTestCompCoreBugReport.TestSF469;
+var
+  Query: TZQuery;
+begin
+  if SkipForReason(srClosedBug) then Exit;
+  Query := CreateQuery;
+  try
+    Query.SQL.Text := 'select * from users where userid = :userid';
+    Query.ParamByName('userid').AsString := 'abc';
+    CheckEquals('abc', Query.ParamByName('userid').AsString);
+    Query.SQL.Text := 'select * from users where username = :userid';
+    CheckEquals('abc', Query.ParamByName('userid').AsString);
+  finally
+    Query.Free;
+  end;
+end;
+
+(* see https://sourceforge.net/p/zeoslib/tickets/493/
+FPC/Lazarus
+
+this code generate AV on FreeAndNil(FConnection1);
+
+procedure TForm1.Button1Click(Sender: TObject);
+var
+FConnection1: TZConnection;
+begin
+FConnection1:=TZConnection.Create(Self);
+FreeAndNil(FConnection1);
+end;
+*)
+procedure ZTestCompCoreBugReport.TestSF493;
+var FConnection1: TZConnection;
+begin
+  FConnection1 := TZConnection.Create(Connection);  //need an owner for this test
+  FreeAndNil(FConnection1);
+end;
+
+procedure ZTestCompCoreBugReport.TestSF495;
+const TestRowID = 255;
+var Query: TZQuery;
+begin
+  Query := CreateQuery;
+  try
+    Check(Query <> nil);
+    Query.Properties.Values[DSProps_LobCacheMode] := LcmOnLoadStr;
+    Query.SQL.Text := 'select * from people';
+    Query.TryKeepDataOnDisconnect := True;
+    Query.CachedUpdates := True;
+    Query.Open;
+    Query.FetchAll;
+    Check(Query.TryKeepDataOnDisconnect);
+    Query.Connection.Disconnect;
+    Query.Append;
+    Query.Fields[0].AsInteger := TestRowID;
+    Query.Post;
+    if Query.UpdatesPending then begin
+      if not Connection.Connected then
+        Connection.Connect;
+      Query.ApplyUpdates;
+      Query.CommitUpdates;
+      Query.Refresh;
+    end;
+  finally
+    Query.Free;
+    Connection.Connect;
+    Connection.ExecuteDirect('delete from people where p_id ='+IntToStr(TestRowID));
+  end;
+end;
+
+procedure ZTestCompCoreBugReport.TestSF498;
+var B: Boolean;
+    Query: TZQuery;
+begin
+  Query := CreateQuery;
+  Query.SQL.Text := 'select * from people';
+  try
+    Check(Query <> nil);
+    for B := True downto False do begin
+      if not Connection.Connected then
+        Connection.Connect;
+      if Query.Active then
+        Query.Close;
+      Query.TryKeepDataOnDisconnect := True;
+      Query.CachedUpdates := True;
+      Query.Open;
+      Query.FetchAll;
+      if B then
+        Connection.Disconnect;
+    end;
+
+  finally
+    Query.Free;
+  end;
+end;
+
+procedure ZTestCompCoreBugReport.TestSF499;
+var Query: TZQuery;
+begin
+  Query := CreateQuery;
+  Query.SQL.Text := 'select * from people';
+  try
+    if Query.Active then
+      Query.Close;
+
+    if not Connection.Connected then
+      Connection.Connect;
+
+    Query.CachedUpdates := true;
+    Query.TryKeepDataOnDisconnect := true;
+
+    Query.Open;
+    //Query.FetchAll;
+
+    if Query.Active then
+      Query.Close;
+
+    if Connection.Connected then
+      Connection.Disconnect;
   finally
     Query.Free;
   end;
@@ -2165,6 +2310,72 @@ begin
     Query.Open;
     Check(true);
   finally
+    FreeAndNil(Query);
+  end;
+end;
+
+procedure ZTestCompCoreBugReport.TestSF310_JoinedUpdate_ProviderFlags;
+var
+  Query: TZQuery;
+begin
+  Query := CreateQuery;
+  Check(Query <> nil);
+  try
+    Query.Connection.Connect;
+    Query.Connection.StartTransaction;
+    //Exit;
+    Query.SQL.Text := 'select c.c_id, c.c_name, c.c_seal, c.c_date_came, '+
+      'c.c_date_out, c.c_weight, c.c_width, c.c_height, c.c_cost, '+
+      'c.c_attributes, dep.dep_name, dep.dep_shname, dep_address '+
+      'from cargo c left join department dep on dep.dep_id = c.c_dep_id '+
+      'where c.c_id = '+IntToStr(TEST_ROW_ID);
+    Query.Open;
+    Query.FieldByName('dep_name').ReadOnly := True;
+    Query.FieldByName('dep_shname').ReadOnly := True;
+    Query.FieldByName('dep_address').ReadOnly := True;
+    Query.Append;
+    Query.FieldByName('c_id').AsInteger := TEST_ROW_ID;
+    Query.Post;
+    Query.Close;
+    Query.Unprepare; //now test updates using provider flags -> Refresh fields
+    Query.WhereMode := wmWhereAll; //to test if the joined fields are ignored in the where clause
+    Query.Open;
+    CheckFalse(Query.Eof, 'there is a row now');
+    Query.Edit;
+    Query.FieldByName('dep_name').ProviderFlags := [];
+    Query.FieldByName('dep_shname').ProviderFlags := [];
+    Query.FieldByName('dep_address').ProviderFlags := [];
+    Query.FieldByName('c_name').AsString := 'Ticket310';
+    Query.Post;
+  finally
+    Query.Connection.Rollback;
+    FreeAndNil(Query);
+  end;
+end;
+
+procedure ZTestCompCoreBugReport.TestSF310_JoinedUpdate_SetReadOnly;
+var
+  Query: TZQuery;
+begin
+  Query := CreateQuery;
+  Check(Query <> nil);
+  try
+    Query.Connection.Connect;
+    Query.Connection.StartTransaction;
+    Query.SQL.Text := 'select c.c_id, c.c_name, c.c_seal, c.c_date_came, '+
+      'c.c_date_out, c.c_weight, c.c_width, c.c_height, c.c_cost, '+
+      'c.c_attributes, dep.dep_name, dep.dep_shname, dep_address '+
+      'from cargo c left join department dep on dep.dep_id = c.c_dep_id '+
+      'where c.c_id = '+IntToStr(TEST_ROW_ID);
+    Query.Open;
+    Query.FieldByName('dep_name').ReadOnly := True;
+    Query.FieldByName('dep_shname').ReadOnly := True;
+    Query.FieldByName('dep_address').ReadOnly := True;
+    Query.Append;
+    Query.FieldByName('c_id').AsInteger := TEST_ROW_ID;
+    Query.Post;
+  finally
+    Query.Connection.Rollback;
     FreeAndNil(Query);
   end;
 end;

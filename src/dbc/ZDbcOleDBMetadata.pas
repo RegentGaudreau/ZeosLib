@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -62,7 +62,7 @@ interface
 {$IFNDEF DISABLE_OLE_METADATA} //if set we have an empty unit
 uses
   Types, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils,
-  ZSysUtils, ZDbcIntfs, ZDbcMetadata,
+  ZSysUtils, ZDbcIntfs, ZDbcMetadata, Windows,
   ZCompatibility, ZPlainOleDBDriver, ZDbcConnection, ActiveX;
 
 type
@@ -77,6 +77,7 @@ type
     function SupportsMultipleStorageObjects: Boolean;
     function SupportsByRefAccessors: Boolean;
     function GetOutParameterAvailability: TOleEnum;
+    function SupportsMaxVarTypes: Boolean;
   end;
   {** Implements OleDB Database Information. }
   TZOleDBDatabaseInfo = class(TZAbstractDatabaseInfo, IZOleDBDatabaseInfo)
@@ -89,6 +90,7 @@ type
     fSupportedTransactIsolationLevels: TZSupportedTransactIsolationLevels;
     fSupportsMultipleResultSets: Boolean;
     fSupportsMultipleStorageObjects: Boolean;
+    FSupportsMaxVarTypes: Boolean;
     fDBPROP_CATALOGUSAGE: Integer;
     fDBPROP_SCHEMAUSAGE: Integer;
     fDBPROP_IDENTIFIERCASE: Integer;
@@ -112,8 +114,12 @@ type
   public
     constructor Create(const Metadata: TZAbstractDatabaseMetadata);
     // database/driver/server info:
+    /// <summary>What's the name of this database product?</summary>
+    /// <returns>database product name</returns>
     function GetDatabaseProductName: string; override;
     function GetDatabaseProductVersion: string; override;
+    /// <summary>What's the name of this ZDBC driver?
+    /// <returns>ZDBC driver name</returns>
     function GetDriverName: string; override;
     function GetDriverVersion: string; override;
     function GetDriverMajorVersion: Integer; override;
@@ -131,7 +137,6 @@ type
 //    function SupportsConvert: Boolean; override; -> Not implemented
 //    function SupportsConvertForTypes(FromType: TZSQLType; ToType: TZSQLType):
 //      Boolean; override; -> Not implemented
-//    function SupportsTableCorrelationNames: Boolean; override; -> Not implemented
 //    function SupportsDifferentTableCorrelationNames: Boolean; override; -> Not implemented
     function SupportsExpressionsInOrderBy: Boolean; override;
     function SupportsOrderByUnrelated: Boolean; override;
@@ -253,6 +258,7 @@ type
     //Ole related
     procedure InitilizePropertiesFromDBInfo(const DBInitialize: IDBInitialize; const Malloc: IMalloc);
     function GetOutParameterAvailability: TOleEnum;
+    function SupportsMaxVarTypes: Boolean;
   end;
 
 {$IFNDEF ZEOS_DISABLE_OLEDB} //if set we have an empty unit
@@ -267,6 +273,7 @@ type
     fProcedureMap: TProcedureMap;
     fProcedureColumnsColMap: TProcedureColumnsColMap;
     fIndexInfoMap: TIndexInfoMap;
+    FByteBuffer: PByteBuffer;
     function OleDBOpenSchema(Schema: TGUID; const Args: array of String): IZResultSet;
     procedure InitializeSchemas;
     function FindSchema(SchemaId: TGUID): Integer;
@@ -281,12 +288,138 @@ type
     function UncachedGetTableTypes: IZResultSet; override;
     function UncachedGetColumns(const Catalog: string; const SchemaPattern: string;
       const TableNamePattern: string; const ColumnNamePattern: string): IZResultSet; override;
+    /// <summary>Gets a description of the access rights for each table
+    ///  available in a catalog from a cache. Note that a table privilege
+    ///  applies to one or more columns in the table. It would be wrong to
+    ///  assume that this priviledge applies to all columns (this may be true
+    ///  for some systems but is not true for all.)
+    ///
+    ///  Only privileges matching the schema and table name
+    ///  criteria are returned. They are ordered by TABLE_SCHEM,
+    ///  TABLE_NAME, and PRIVILEGE.
+    ///
+    ///  Each privilige description has the following columns:
+    ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+    ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+    ///  <c>TABLE_NAME</c> String => table name
+    ///  <c>GRANTOR</c> => grantor of access (may be null)
+    ///  <c>GRANTEE</c> String => grantee of access
+    ///  <c>PRIVILEGE</c> String => name of access (SELECT,
+    ///      INSERT, UPDATE, REFRENCES, ...)
+    ///  <c>IS_GRANTABLE</c> String => "YES" if grantee is permitted
+    ///   to grant to others; "NO" if not; null if unknown</summary>
+    ///
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" means drop schema from
+    ///  the selection criteria</param>
+    /// <param>"TableNamePattern" a table name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a table privilege description</returns>
+    /// <remarks>see GetSearchStringEscape</remarks>
     function UncachedGetTablePrivileges(const Catalog: string; const SchemaPattern: string;
       const TableNamePattern: string): IZResultSet; override;
+    /// <summary>Gets a description of the access rights for a table's columns.
+    ///
+    ///  Only privileges matching the column name criteria are
+    ///  returned. They are ordered by COLUMN_NAME and PRIVILEGE.
+    ///
+    ///  Each privilige description has the following columns:
+ 	  ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+ 	  ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+ 	  ///  <c>TABLE_NAME</c> String => table name
+ 	  ///  <c>COLUMN_NAME</c> String => column name
+ 	  ///  <c>GRANTOR</c> => grantor of access (may be null)
+ 	  ///  <c>GRANTEE</c> String => grantee of access
+ 	  ///  <c>PRIVILEGE</c> String => name of access (SELECT,
+    ///     INSERT, UPDATE, REFRENCES, ...)
+ 	  ///  <c>IS_GRANTABLE</c> String => "YES" if grantee is permitted
+    ///   to grant to others; "NO" if not; null if unknown</summary>
+    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
+    ///  name from the selection criteria</param>
+    /// <param>"schema" a schema name; An empty schema means drop schema
+    ///  name from the selection criteria</param>
+    /// <param>"table" a table name; An empty table means drop table
+    ///  name from the selection criteria</param>
+    /// <param>"ColumnNamePattern" a column name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a privilege description</returns>
+    /// <remarks>see GetSearchStringEscape</remarks>
     function UncachedGetColumnPrivileges(const Catalog: string; const Schema: string;
       const Table: string; const ColumnNamePattern: string): IZResultSet; override;
+    /// <summary>Gets a description of a table's primary key columns. They
+    ///  are ordered by COLUMN_NAME.
+    ///  Each primary key column description has the following columns:
+ 	  ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+ 	  ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+ 	  ///  <c>TABLE_NAME</c> String => table name
+ 	  ///  <c>COLUMN_NAME</c> String => column name
+ 	  ///  <c>KEY_SEQ</c> short => sequence number within primary key
+ 	  ///  <c>PK_NAME</c> String => primary key name (may be null)</summary>
+    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
+    ///  name from the selection criteria</param>
+    /// <param>"schema" a schema name; An empty schema means drop schema
+    ///  name from the selection criteria</param>
+    /// <param>"table" a table name; An empty table means drop table
+    ///  name from the selection criteria</param>
+    /// <returns><c>ResultSet</c> - each row is a primary key column description</returns>
+    /// <remarks>see GetSearchStringEscape</remarks>
     function UncachedGetPrimaryKeys(const Catalog: string; const Schema: string;
       const Table: string): IZResultSet; override;
+    /// <summary>Gets a description of the primary key columns that are
+    ///  referenced by a table's foreign key columns (the primary keys
+    ///  imported by a table).  They are ordered by PKTABLE_CAT,
+    ///  PKTABLE_SCHEM, PKTABLE_NAME, and KEY_SEQ.
+    ///  Each primary key column description has the following columns:
+    ///  <c>PKTABLE_CAT</c> String => primary key table catalog
+    ///       being imported (may be null)
+    ///  <c>PKTABLE_SCHEM</c> String => primary key table schema
+    ///       being imported (may be null)
+    ///  <c>PKTABLE_NAME</c> String => primary key table name
+    ///       being imported
+    ///  <c>PKCOLUMN_NAME</c> String => primary key column name
+    ///       being imported
+    ///  <c>FKTABLE_CAT</c> String => foreign key table catalog (may be null)
+    ///  <c>FKTABLE_SCHEM</c> String => foreign key table schema (may be null)
+    ///  <c>FKTABLE_NAME</c> String => foreign key table name
+    ///  <c>FKCOLUMN_NAME</c> String => foreign key column name
+    ///  <c>KEY_SEQ</c> short => sequence number within foreign key
+    ///  <c>UPDATE_RULE</c> short => What happens to
+    ///        foreign key when primary is updated:
+    ///        importedNoAction - do not allow update of primary
+    ///                key if it has been imported
+    ///        importedKeyCascade - change imported key to agree
+    ///                with primary key update
+    ///        importedKeySetNull - change imported key to NULL if
+    ///                its primary key has been updated
+    ///        importedKeySetDefault - change imported key to default values
+    ///                if its primary key has been updated
+    ///        importedKeyRestrict - same as importedKeyNoAction
+    ///                                  (for ODBC 2.x compatibility)
+    ///  <c>DELETE_RULE</c> short => What happens to
+    ///       the foreign key when primary is deleted.
+    ///        importedKeyNoAction - do not allow delete of primary
+    ///                key if it has been imported
+    ///        importedKeyCascade - delete rows that import a deleted key
+    ///       importedKeySetNull - change imported key to NULL if
+    ///                its primary key has been deleted
+    ///        importedKeyRestrict - same as importedKeyNoAction
+    ///                                  (for ODBC 2.x compatibility)
+    ///        importedKeySetDefault - change imported key to default if
+    ///                its primary key has been deleted
+    ///  <c>FK_NAME</c> String => foreign key name (may be null)
+    ///  <c>PK_NAME</c> String => primary key name (may be null)
+    ///  <c>DEFERRABILITY</c> short => can the evaluation of foreign key
+    ///       constraints be deferred until commit
+    ///        importedKeyInitiallyDeferred - see SQL92 for definition
+    ///        importedKeyInitiallyImmediate - see SQL92 for definition
+    ///        importedKeyNotDeferrable - see SQL92 for definition</summary>
+    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
+    ///  name from the selection criteria</param>
+    /// <param>"schema" a schema name; An empty schema means drop schema
+    ///  name from the selection criteria</param>
+    /// <param>"table" a table name; An empty table means drop table
+    ///  name from the selection criteria</param>
+    /// <returns><c>ResultSet</c> - each row is imported key column description</returns>
+    /// <remarks>see GetSearchStringEscape;GetExportedKeys</remarks>
     function UncachedGetImportedKeys(const Catalog: string; const Schema: string;
       const Table: string): IZResultSet; override;
     function UncachedGetExportedKeys(const Catalog: string; const Schema: string;
@@ -298,6 +431,30 @@ type
       Unique: Boolean; Approximate: Boolean): IZResultSet; override;
 //     function UncachedGetSequences(const Catalog: string; const SchemaPattern: string;
 //      const SequenceNamePattern: string): IZResultSet; virtual; -> Not implemented
+    /// <summary>Gets a description of the stored procedures available in a
+    ///  catalog. This method needs to be implemented per driver.
+    ///  Only procedure descriptions matching the schema and procedure name
+    ///  criteria are returned. They are ordered by
+    ///  PROCEDURE_SCHEM, and PROCEDURE_NAME.
+    ///  Each procedure description has the the following columns:
+    ///  <c>PROCEDURE_CAT</c> String => procedure catalog (may be null)
+    ///  <c>PROCEDURE_SCHEM</c> String => procedure schema (may be null)
+    ///  <c>PROCEDURE_NAME</c> String => procedure name
+    ///  <c>PROCEDURE_OVERLOAD</c> => a overload indicator (may be null)
+    ///  <c>RESERVED1</c> => for future use
+    ///  <c>RESERVED2</c> => for future use
+    ///  <c>REMARKS</c> String => explanatory comment on the procedure
+    ///  <c>PROCEDURE_TYPE</c> short => kind of procedure:
+    ///   procedureResultUnknown - May return a result
+    ///   procedureNoResult - Does not return a result
+    ///   procedureReturnsResult - Returns a result</summary>
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" means drop schema
+    ///  pattern from the selection criteria</param>
+    /// <param>"ProcedureNamePattern" a procedure name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a procedure description.</returns>
+    /// <remarks>see getSearchStringEscape</remarks>
     function UncachedGetProcedures(const Catalog: string; const SchemaPattern: string;
       const ProcedureNamePattern: string): IZResultSet; override;
     function UncachedGetProcedureColumns(const Catalog: string; const SchemaPattern: string;
@@ -320,7 +477,7 @@ implementation
 uses
   Variants, ZGenericSqlToken, ZFastCode,
   {$IFDEF WITH_UNIT_NAMESPACES}System.Win.ComObj{$ELSE}ComObj{$ENDIF},
-  ZDbcOleDBUtils, ZDbcLogging
+  ZDbcOleDBUtils, ZDbcLogging, ZDbcCachedResultSet
   {$IFDEF ENABLE_OLEDB} //Exclude for ADO
   ,ZDbcOleDB, ZDbcOleDBResultSet, ZDbcOleDBStatement
   {$ENDIF};
@@ -341,10 +498,6 @@ end;
 //----------------------------------------------------------------------
 // First, a variety of minor information about the target database.
 
-{**
-  What's the name of this database product?
-  @return database product name
-}
 function TZOleDBDatabaseInfo.GetDatabaseProductName: string;
 begin
   Result := fDBPROP_DBMSNAME;
@@ -359,10 +512,6 @@ begin
   Result := fDBPROP_DBMSVER;
 end;
 
-{**
-  What's the name of this JDBC driver?
-  @return JDBC driver name
-}
 function TZOleDBDatabaseInfo.GetDriverName: string;
 begin
   Result := fDBPROP_PROVIDERFRIENDLYNAME;
@@ -402,6 +551,11 @@ end;
 function TZOleDBDatabaseInfo.UsesLocalFilePerTable: Boolean;
 begin
   Result := False;
+end;
+
+function TZOleDBDatabaseInfo.SupportsMaxVarTypes: Boolean;
+begin
+  Result := FSupportsMaxVarTypes
 end;
 
 {**
@@ -651,13 +805,13 @@ begin
               Include(fSupportedTransactIsolationLevels, tiSerializable);
           end;
         DBPROP_MULTIPLERESULTS:         fSupportsMultipleResultSets := PropSet.rgProperties^[i].vValue <> DBPROPVAL_MR_NOTSUPPORTED;
-        DBPROP_MULTIPLESTORAGEOBJECTS:  fSupportsMultipleStorageObjects := PropSet.rgProperties^[i].vValue = VARIANT_TRUE;
+        DBPROP_MULTIPLESTORAGEOBJECTS:  fSupportsMultipleStorageObjects := PropSet.rgProperties^[i].vValue = ZVARIANT_TRUE;
         DBPROP_SCHEMAUSAGE:             fDBPROP_SCHEMAUSAGE := PropSet.rgProperties^[i].vValue;
         DBPROP_CATALOGUSAGE:            fDBPROP_CATALOGUSAGE := PropSet.rgProperties^[i].vValue;
         DBPROP_QUOTEDIDENTIFIERCASE:    fDBPROP_QUOTEDIDENTIFIERCASE := PropSet.rgProperties^[i].vValue;
         DBPROP_IDENTIFIERCASE:          fDBPROP_IDENTIFIERCASE := PropSet.rgProperties^[i].vValue;
         DBPROP_MAXROWSIZE:              fDBPROP_MAXROWSIZE := PropSet.rgProperties^[i].vValue;
-        DBPROP_MAXROWSIZEINCLUDESBLOB:  fDBPROP_MAXROWSIZEINCLUDESBLOB := PropSet.rgProperties^[i].vValue = VARIANT_TRUE;
+        DBPROP_MAXROWSIZEINCLUDESBLOB:  fDBPROP_MAXROWSIZEINCLUDESBLOB := PropSet.rgProperties^[i].vValue = ZVARIANT_TRUE;
         DBPROP_SQLSUPPORT:              fDBPROP_SQLSUPPORT := PropSet.rgProperties^[i].vValue;
         DBPROP_CATALOGTERM:             fDBPROP_CATALOGTERM := String(PropSet.rgProperties^[i].vValue);
         DBPROP_SCHEMATERM:              fDBPROP_SCHEMATERM := String(PropSet.rgProperties^[i].vValue);
@@ -667,11 +821,11 @@ begin
         DBPROP_NULLCOLLATION:           fDBPROP_NULLCOLLATION := PropSet.rgProperties^[i].vValue;
         DBPROP_SUBQUERIES:              fDBPROP_SUBQUERIES := PropSet.rgProperties^[i].vValue;
         DBPROP_GROUPBY:                 fDBPROP_GROUPBY := PropSet.rgProperties^[i].vValue;
-        DBPROP_ORDERBYCOLUMNSINSELECT:  fDBPROP_ORDERBYCOLUMNSINSELECT := PropSet.rgProperties^[i].vValue = VARIANT_TRUE;
+        DBPROP_ORDERBYCOLUMNSINSELECT:  fDBPROP_ORDERBYCOLUMNSINSELECT := PropSet.rgProperties^[i].vValue = ZVARIANT_TRUE;
         DBPROP_PREPAREABORTBEHAVIOR:    fDBPROP_PREPAREABORTBEHAVIOR := PropSet.rgProperties^[i].vValue;
         DBPROP_PREPARECOMMITBEHAVIOR:   fDBPROP_PREPARECOMMITBEHAVIOR := PropSet.rgProperties^[i].vValue;
-        DBPROP_MULTIPLEPARAMSETS:       fDBPROP_MULTIPLEPARAMSETS := PropSet.rgProperties^[i].vValue = VARIANT_TRUE;
-        DBPROP_BYREFACCESSORS:          fDBPROP_BYREFACCESSORS := PropSet.rgProperties^[i].vValue = VARIANT_TRUE;
+        DBPROP_MULTIPLEPARAMSETS:       fDBPROP_MULTIPLEPARAMSETS := PropSet.rgProperties^[i].vValue = ZVARIANT_TRUE;
+        DBPROP_BYREFACCESSORS:          fDBPROP_BYREFACCESSORS := PropSet.rgProperties^[i].vValue = ZVARIANT_TRUE;
         {$IFDEF FPC}
         DBPROP_OUTPUTPARAMETERAVAILABILITY: begin
                                               c := PropSet.rgProperties^[i].vValue;
@@ -689,6 +843,8 @@ begin
   finally
     DBProperties := nil;
   end;
+  with Metadata.GetConnection do
+    FSupportsMaxVarTypes :=(GetServerProvider = spMSSQL) and (GetHostVersion >= 14000000);
 end;
 
 {**
@@ -1559,39 +1715,7 @@ begin
     else
       Result := s;
 end;
-{**
-  Gets a description of the stored procedures available in a
-  catalog.
 
-  <P>Only procedure descriptions matching the schema and
-  procedure name criteria are returned.  They are ordered by
-  PROCEDURE_SCHEM, and PROCEDURE_NAME.
-
-  <P>Each procedure description has the the following columns:
-   <OL>
- 	<LI><B>PROCEDURE_CAT</B> String => procedure catalog (may be null)
- 	<LI><B>PROCEDURE_SCHEM</B> String => procedure schema (may be null)
- 	<LI><B>PROCEDURE_NAME</B> String => procedure name
-   <LI> reserved for future use
-   <LI> reserved for future use
-   <LI> reserved for future use
- 	<LI><B>REMARKS</B> String => explanatory comment on the procedure
- 	<LI><B>PROCEDURE_TYPE</B> short => kind of procedure:
-       <UL>
-       <LI> procedureResultUnknown - May return a result
-       <LI> procedureNoResult - Does not return a result
-       <LI> procedureReturnsResult - Returns a result
-       </UL>
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schemaPattern a schema name pattern; "" retrieves those
-  without a schema
-  @param procedureNamePattern a procedure name pattern
-  @return <code>ResultSet</code> - each row is a procedure description
-  @see #getSearchStringEscape
-}
 function TOleDBDatabaseMetadata.UncachedGetProcedures(const Catalog: string;
   const SchemaPattern: string; const ProcedureNamePattern: string): IZResultSet;
 var
@@ -1599,7 +1723,7 @@ var
   Len: NativeUInt;
 begin
   Result:=inherited UncachedGetProcedures(Catalog, SchemaPattern, ProcedureNamePattern);
-
+  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
   RS := OleDBOpenSchema(DBSCHEMA_PROCEDURES,
     [DecomposeObjectString(Catalog), DecomposeObjectString(SchemaPattern), DecomposeObjectString(ProcedureNamePattern), '']);
   if RS <> nil then
@@ -1693,7 +1817,7 @@ var
   SQLType: TZSQLType;
 begin
   Result:=inherited UncachedGetProcedureColumns(Catalog, SchemaPattern, ProcedureNamePattern, ColumnNamePattern);
-
+  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
   RS := OleDBOpenSchema(DBSCHEMA_PROCEDURE_PARAMETERS, [DecomposeObjectString(Catalog),
     DecomposeObjectString(SchemaPattern), DecomposeObjectString(ProcedureNamePattern)]);
   if RS <> nil then
@@ -1730,7 +1854,7 @@ begin
         SQLType := ConvertOleDBTypeToSQLType(GetSmall(fProcedureColumnsColMap.ColIndices[ProcColDataTypeIndex]), RS);
         Result.UpdateSmall(ProcColDataTypeIndex, Ord(SQLType));
         Result.UpdatePWideChar(ProcColTypeNameIndex, GetPWideChar(fProcedureColumnsColMap.ColIndices[ProcColTypeNameIndex], Len), Len);
-        if SQLType in [stString, stUnicodeString]
+        if SQLType in [stString, stUnicodeString, stBytes]
         then Result.UpdateInt(ProcColPrecisionIndex, GetInt(fProcedureColumnsColMap.ColIndices[ProcColLengthIndex]))
         else Result.UpdateInt(ProcColPrecisionIndex, GetInt(fProcedureColumnsColMap.ColIndices[ProcColPrecisionIndex]));
         Result.UpdateInt(ProcColLengthIndex, GetInt(fProcedureColumnsColMap.ColIndices[ProcColLengthIndex]));
@@ -1795,7 +1919,7 @@ begin
       TableTypes := TableTypes + ',';
     TableTypes := TableTypes + Types[I];
   end;
-
+  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
   RS := OleDBOpenSchema(DBSCHEMA_TABLES,
     [DecomposeObjectString(Catalog), DecomposeObjectString(SchemaPattern),
       DecomposeObjectString(TableNamePattern), TableTypes]);
@@ -1835,7 +1959,7 @@ var
   Len: NativeUInt;
 begin
   Result := inherited UncachedGetSchemas;
-
+  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
   RS := OleDBOpenSchema(DBSCHEMA_SCHEMATA, []);
   if RS <> nil then
     with RS do
@@ -1868,7 +1992,7 @@ var
   Len: NativeUInt;
 begin
   Result:=inherited UncachedGetCatalogs;
-
+  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
   RS := OleDBOpenSchema(DBSCHEMA_CATALOGS, []);
   if Assigned(RS) then
     with RS do
@@ -1973,58 +2097,137 @@ function TOleDBDatabaseMetadata.UncachedGetColumns(const Catalog: string;
 const FlagColumn = TableColColumnIsNullableIndex+1;
 var
   RS: IZResultSet;
-  Flags: Integer;
+  Flags, CurrentOleType, TypesOleType, Precision, Scale, ColumnSize: Integer;
+  IsLong, TypeIsLong, ISFIXEDLENGTH, SupportsMaxVarTypes: Boolean;
   SQLType: TZSQLType;
   Len: NativeUInt;
+  TypeNames: IZResultSet;
+  NameBuf, NamePos: PWideChar;
+  LastORDINAL_POSITION, CurrentORDINAL_POSITION: Integer;
+  DoSort: Boolean;
+  procedure InitTableColColumnMap(const RS: IZResultSet);
+  begin
+    fTableColColumnMap.ColIndices[CatalogNameIndex] := CatalogNameIndex;
+    fTableColColumnMap.ColIndices[SchemaNameIndex] := SchemaNameIndex;
+    fTableColColumnMap.ColIndices[TableNameIndex] := TableNameIndex;
+    fTableColColumnMap.ColIndices[ColumnNameIndex] := ColumnNameIndex;
+    fTableColColumnMap.ColIndices[TableColColumnTypeIndex] := RS.FindColumn('DATA_TYPE');
+    fTableColColumnMap.ColIndices[TableColColumnTypeNameIndex] := InvalidDbcIndex;
+    fTableColColumnMap.ColIndices[TableColColumnSizeIndex] := RS.FindColumn('CHARACTER_MAXIMUM_LENGTH');
+    fTableColColumnMap.ColIndices[TableColColumnDecimalDigitsIndex] := RS.FindColumn('NUMERIC_SCALE');
+    fTableColColumnMap.ColIndices[TableColColumnBufLengthIndex] := RS.FindColumn('NUMERIC_PRECISION');;
+    fTableColColumnMap.ColIndices[TableColColumnNullableIndex] := RS.FindColumn('IS_NULLABLE');
+    fTableColColumnMap.ColIndices[TableColColumnRemarksIndex] := RS.FindColumn('DESCRIPTION');
+    fTableColColumnMap.ColIndices[TableColColumnColDefIndex] := RS.FindColumn('COLUMN_DEFAULT');
+    fTableColColumnMap.ColIndices[TableColColumnSQLDataTypeIndex] := fTableColColumnMap.ColIndices[TableColColumnTypeIndex];
+    fTableColColumnMap.ColIndices[TableColColumnSQLDateTimeSubIndex] := RS.FindColumn('DATETIME_PRECISION');
+    fTableColColumnMap.ColIndices[TableColColumnCharOctetLengthIndex] := RS.FindColumn('CHARACTER_OCTET_LENGTH');
+    fTableColColumnMap.ColIndices[TableColColumnOrdPosIndex] := RS.FindColumn('ORDINAL_POSITION');
+    fTableColColumnMap.ColIndices[TableColColumnIsNullableIndex] := RS.FindColumn('IS_NULLABLE');
+    fTableColColumnMap.ColIndices[FlagColumn] := RS.FindColumn('COLUMN_FLAGS');
+    fTableColColumnMap.Initilized := True;
+  end;
+  function SupportsMaxVariableTypes: Boolean;
+  begin
+    Result := (GetDatabaseInfo as IZOleDBDatabaseInfo).SupportsMaxVarTypes;
+  end;
+  procedure SortOrdinalPositions;
+  var VR: IZVirtualResultSet;
+      ColumnIndices: TIntegerDynArray;
+  begin
+    ColumnIndices := nil;
+    if Result.QueryInterface(IZVirtualResultSet, VR) = S_OK then begin
+      SetLength(ColumnIndices, 4);
+      ColumnIndices[0]:= CatalogNameIndex;
+      ColumnIndices[1]:= SchemaNameIndex;
+      ColumnIndices[2]:= TableNameIndex;
+      ColumnIndices[3]:= TableColColumnOrdPosIndex;
+      Vr.BeforeFirst;
+      VR.SortRows(ColumnIndices, False);
+    end;
+  end;
 begin
-  Result:=inherited UncachedGetColumns(Catalog, SchemaPattern,
+  Result := inherited UncachedGetColumns(Catalog, SchemaPattern,
       TableNamePattern, ColumnNamePattern);
-
+  DoSort := False;
+  LastORDINAL_POSITION := 0;
+  TypeNames := GetTypeInfo; //improve missing TypeNames: https://sourceforge.net/p/zeoslib/tickets/397/
   RS := OleDBOpenSchema(DBSCHEMA_COLUMNS,
     [DecomposeObjectString(Catalog), DecomposeObjectString(SchemaPattern),
     DecomposeObjectString(TableNamePattern), DecomposeObjectString(ColumnNamePattern)]);
+  NameBuf := Pointer(FByteBuffer);
+  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
   if Assigned(RS) then begin
+    SupportsMaxVarTypes := SupportsMaxVariableTypes;
     with RS do begin
-      if not fTableColColumnMap.Initilized then begin
-        fTableColColumnMap.ColIndices[CatalogNameIndex] := CatalogNameIndex;
-        fTableColColumnMap.ColIndices[SchemaNameIndex] := SchemaNameIndex;
-        fTableColColumnMap.ColIndices[TableNameIndex] := TableNameIndex;
-        fTableColColumnMap.ColIndices[ColumnNameIndex] := ColumnNameIndex;
-        fTableColColumnMap.ColIndices[TableColColumnTypeIndex] := FindColumn('DATA_TYPE');
-        fTableColColumnMap.ColIndices[TableColColumnTypeNameIndex] := fTableColColumnMap.ColIndices[TableColColumnTypeIndex];
-        fTableColColumnMap.ColIndices[TableColColumnSizeIndex] := FindColumn('CHARACTER_MAXIMUM_LENGTH');
-        fTableColColumnMap.ColIndices[TableColColumnDecimalDigitsIndex] := FindColumn('NUMERIC_SCALE');
-        fTableColColumnMap.ColIndices[TableColColumnBufLengthIndex] := FindColumn('NUMERIC_PRECISION');;
-        fTableColColumnMap.ColIndices[TableColColumnNullableIndex] := FindColumn('IS_NULLABLE');
-        fTableColColumnMap.ColIndices[TableColColumnRemarksIndex] := FindColumn('DESCRIPTION');
-        fTableColColumnMap.ColIndices[TableColColumnColDefIndex] := FindColumn('COLUMN_DEFAULT');
-        fTableColColumnMap.ColIndices[TableColColumnSQLDataTypeIndex] := fTableColColumnMap.ColIndices[TableColColumnTypeIndex];
-        fTableColColumnMap.ColIndices[TableColColumnSQLDateTimeSubIndex] := FindColumn('DATETIME_PRECISION');
-        fTableColColumnMap.ColIndices[TableColColumnCharOctetLengthIndex] := FindColumn('CHARACTER_OCTET_LENGTH');
-        fTableColColumnMap.ColIndices[TableColColumnOrdPosIndex] := FindColumn('ORDINAL_POSITION');
-        fTableColColumnMap.ColIndices[TableColColumnIsNullableIndex] := FindColumn('IS_NULLABLE');
-        fTableColColumnMap.ColIndices[FlagColumn] := FindColumn('COLUMN_FLAGS');
-        fTableColColumnMap.Initilized := True;
-      end;
+      if not fTableColColumnMap.Initilized then
+        InitTableColColumnMap(RS);
       while Next do begin
         Result.MoveToInsertRow;
-        Result.UpdatePWideChar(CatalogNameIndex, GetPWideChar(CatalogNameIndex, Len), Len);
-        Result.UpdatePWideChar(SchemaNameIndex, GetPWideChar(SchemaNameIndex, Len), Len);
-        Result.UpdatePWideChar(TableNameIndex, GetPWideChar(TableNameIndex, Len), Len);
+        if not IsNull(CatalogNameIndex) then
+          Result.UpdatePWideChar(CatalogNameIndex, GetPWideChar(CatalogNameIndex, Len), Len);
+        if not IsNull(SchemaNameIndex) then
+          Result.UpdatePWideChar(SchemaNameIndex, GetPWideChar(SchemaNameIndex, Len), Len);
+        if not IsNull(TableNameIndex) then
+          Result.UpdatePWideChar(TableNameIndex, GetPWideChar(TableNameIndex, Len), Len);
         Result.UpdatePWideChar(ColumnNameIndex, GetPWideChar(ColumnNameIndex, Len), Len);
         Flags := GetInt(fTableColColumnMap.ColIndices[FlagColumn]);
-        SQLType := ConvertOleDBTypeToSQLType(GetSmall(fTableColColumnMap.ColIndices[TableColColumnTypeIndex]),
-          ((FLAGS and DBCOLUMNFLAGS_ISLONG) <> 0),
-          GetInt(fTableColColumnMap.ColIndices[TableColColumnDecimalDigitsIndex]),
-          GetInt(fTableColColumnMap.ColIndices[TableColColumnBufLengthIndex]));
+        CurrentOleType := GetSmall(fTableColColumnMap.ColIndices[TableColColumnTypeIndex]);
+        IsLong := ((FLAGS and DBCOLUMNFLAGS_ISLONG) <> 0);
+        ISFIXEDLENGTH := ((FLAGS and DBCOLUMNFLAGS_ISFIXEDLENGTH) <> 0);
+        Scale := GetInt(fTableColColumnMap.ColIndices[TableColColumnDecimalDigitsIndex]);
+        Precision := GetInt(fTableColColumnMap.ColIndices[TableColColumnBufLengthIndex]);
+        ColumnSize := GetInt(fTableColColumnMap.ColIndices[TableColColumnSizeIndex]);
+        SQLType := ConvertOleDBTypeToSQLType(CurrentOleType, IsLong, Scale, Precision);
+        if (SQLType in [stTime, stTimeStamp]) and not IsNull(fTableColColumnMap.ColIndices[TableColColumnSQLDateTimeSubIndex]) then
+          Scale := GetInt(fTableColColumnMap.ColIndices[TableColColumnSQLDateTimeSubIndex]);
+
+        TypeNames.BeforeFirst;
+        while TypeNames.Next do begin
+          TypeIsLong := TypeNames.GetBooleanByName('IS_LONG');
+          TypesOleType := TypeNames.GetInt(TypeInfoSQLDataTypeIndex);
+          if (TypesOleType = CurrentOleType) and
+             (not IsLong or (TypeIsLong <> SupportsMaxVarTypes)) and
+             (TypeNames.GetInt(TypeInfoMinimumScaleIndex) <= Scale) and (TypeNames.GetInt(TypeInfoMaximumScaleIndex) >= Scale) and
+             (TypeNames.GetBooleanByName('IS_FIXEDLENGTH') = ISFIXEDLENGTH) then begin
+            NamePos := TypeNames.GetPWideChar(TypeInfoTypeNameIndex, Len);
+            Move(NamePos^, NameBuf^, Len shl 1);
+            NamePos := NameBuf+Len;
+            if (CurrentOleType <> DBTYPE_CY) and (SQLType in [stCurrency, stBigDecimal, stBytes, stString, stUnicodeString, stAsciiStream, stUnicodeStream, stBinaryStream]) or
+               ((SQLType in [stTime, stTimeStamp]) and (Scale>0)) then begin
+              PWord(NamePos)^ := Word('(');
+              inc(NamePos);
+              if SQLType in [stBytes, stString, stUnicodeString, stAsciiStream, stUnicodeStream, stBinaryStream] then begin
+                if (IsLong and SupportsMaxVarTypes) then begin
+                  PWord(NamePos    )^ := Word('m');
+                  PWord(NamePos + 1)^ := Word('a');
+                  PWord(NamePos + 2)^ := Word('x');
+                  Inc(NamePos, 3);
+                end else IntToUnicode(Cardinal(ColumnSize), NamePos, @NamePos)
+              end else begin
+                if SQLType in [stCurrency, stBigDecimal] then begin
+                  IntToUnicode(Cardinal(Precision), NamePos, @NamePos);
+                  PWord(NamePos)^ := Word(',');
+                  Inc(NamePos);
+                end;
+                IntToUnicode(Cardinal(Scale), NamePos, @NamePos);
+              end;
+              PWord(NamePos)^ := Word(')');
+              Inc(NamePos);
+            end;
+            Len := NamePos - NameBuf;
+            Result.UpdatePWideChar(TableColColumnTypeNameIndex, NameBuf, Len);
+            Break;
+          end;
+        end;
         Result.UpdateSmall(TableColColumnTypeIndex, Ord(SQLType));
         if SQLType in [stCurrency, stBigDecimal] then begin
-          Result.UpdateInt(TableColColumnSizeIndex, GetInt(fTableColColumnMap.ColIndices[TableColColumnBufLengthIndex]));
+          Result.UpdateInt(TableColColumnSizeIndex, Precision);
           Result.UpdateInt(TableColColumnDecimalDigitsIndex, GetSmall(fTableColColumnMap.ColIndices[TableColColumnDecimalDigitsIndex]));
         end else begin
           if SQLType in [stTime, stTimeStamp] then
-            Result.UpdateInt(TableColColumnDecimalDigitsIndex, GetSmall(fTableColColumnMap.ColIndices[TableColColumnSQLDateTimeSubIndex]));
-          Result.UpdateInt(TableColColumnSizeIndex, GetInt(fTableColColumnMap.ColIndices[TableColColumnSizeIndex]));
+            Result.UpdateInt(TableColColumnDecimalDigitsIndex, Scale);
+          Result.UpdateInt(TableColColumnSizeIndex, ColumnSize);
         end;
         Result.UpdateInt(TableColColumnBufLengthIndex, GetInt(fTableColColumnMap.ColIndices[TableColColumnBufLengthIndex]));
         Result.UpdateInt(TableColColumnDecimalDigitsIndex, GetSmall(fTableColColumnMap.ColIndices[TableColColumnDecimalDigitsIndex]));
@@ -2034,7 +2237,10 @@ begin
         Result.UpdatePWideChar(TableColColumnColDefIndex, GetPWideChar(fTableColColumnMap.ColIndices[TableColColumnColDefIndex], Len), Len);
         Result.UpdateSmall(TableColColumnSQLDataTypeIndex, GetSmall(fTableColColumnMap.ColIndices[TableColColumnSQLDataTypeIndex]));
         Result.UpdateInt(TableColColumnCharOctetLengthIndex, GetInt(fTableColColumnMap.ColIndices[TableColColumnCharOctetLengthIndex]));
-        Result.UpdateInt(TableColColumnOrdPosIndex, GetInt(fTableColColumnMap.ColIndices[TableColColumnOrdPosIndex]));
+        CurrentORDINAL_POSITION := GetInt(fTableColColumnMap.ColIndices[TableColColumnOrdPosIndex]);
+        Result.UpdateInt(TableColColumnOrdPosIndex, CurrentORDINAL_POSITION);
+        DoSort := DoSort or (CurrentORDINAL_POSITION < LastORDINAL_POSITION);
+        LastORDINAL_POSITION := CurrentORDINAL_POSITION;
         Result.UpdateUnicodeString(TableColColumnIsNullableIndex, bYesNo[GetBoolean(fTableColColumnMap.ColIndices[TableColColumnIsNullableIndex])]);
         Result.UpdateBoolean(TableColColumnAutoIncIndex, Flags and DBCOLUMNFLAGS_ISROWID = DBCOLUMNFLAGS_ISROWID);
         Result.UpdateBoolean(TableColColumnSearchableIndex, (Flags and (DBCOLUMNFLAGS_ISLONG) = 0));
@@ -2046,36 +2252,11 @@ begin
       Close;
     end;
   end;
+  if DoSort then
+    SortOrdinalPositions;
+
 end;
 
-{**
-  Gets a description of the access rights for a table's columns.
-
-  <P>Only privileges matching the column name criteria are
-  returned.  They are ordered by COLUMN_NAME and PRIVILEGE.
-
-  <P>Each privilige description has the following columns:
-   <OL>
- 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
- 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
- 	<LI><B>TABLE_NAME</B> String => table name
- 	<LI><B>COLUMN_NAME</B> String => column name
- 	<LI><B>GRANTOR</B> => grantor of access (may be null)
- 	<LI><B>GRANTEE</B> String => grantee of access
- 	<LI><B>PRIVILEGE</B> String => name of access (SELECT,
-       INSERT, UPDATE, REFRENCES, ...)
- 	<LI><B>IS_GRANTABLE</B> String => "YES" if grantee is permitted
-       to grant to others; "NO" if not; null if unknown
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schema a schema name; "" retrieves those without a schema
-  @param table a table name
-  @param columnNamePattern a column name pattern
-  @return <code>ResultSet</code> - each row is a column privilege description
-  @see #getSearchStringEscape
-}
 function TOleDBDatabaseMetadata.UncachedGetColumnPrivileges(const Catalog: string;
   const Schema: string; const Table: string; const ColumnNamePattern: string): IZResultSet;
 var
@@ -2083,7 +2264,7 @@ var
   Len: NativeUInt;
 begin
   Result:=inherited UncachedGetColumnPrivileges(Catalog, Schema, Table, ColumnNamePattern);
-
+  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
   RS := OleDBOpenSchema(DBSCHEMA_COLUMN_PRIVILEGES,
     [Catalog, Schema, Table, ColumnNamePattern]);
   if Assigned(RS) then
@@ -2117,38 +2298,6 @@ begin
     end;
 end;
 
-{**
-  Gets a description of the access rights for each table available
-  in a catalog. Note that a table privilege applies to one or
-  more columns in the table. It would be wrong to assume that
-  this priviledge applies to all columns (this may be true for
-  some systems but is not true for all.)
-
-  <P>Only privileges matching the schema and table name
-  criteria are returned.  They are ordered by TABLE_SCHEM,
-  TABLE_NAME, and PRIVILEGE.
-
-  <P>Each privilige description has the following columns:
-   <OL>
- 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
- 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
- 	<LI><B>TABLE_NAME</B> String => table name
- 	<LI><B>GRANTOR</B> => grantor of access (may be null)
- 	<LI><B>GRANTEE</B> String => grantee of access
- 	<LI><B>PRIVILEGE</B> String => name of access (SELECT,
-       INSERT, UPDATE, REFRENCES, ...)
- 	<LI><B>IS_GRANTABLE</B> String => "YES" if grantee is permitted
-       to grant to others; "NO" if not; null if unknown
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schemaPattern a schema name pattern; "" retrieves those
-  without a schema
-  @param tableNamePattern a table name pattern
-  @return <code>ResultSet</code> - each row is a table privilege description
-  @see #getSearchStringEscape
-}
 function TOleDBDatabaseMetadata.UncachedGetTablePrivileges(const Catalog: string;
   const SchemaPattern: string; const TableNamePattern: string): IZResultSet;
 var
@@ -2156,7 +2305,7 @@ var
   Len: NativeUInt;
 begin
   Result:=inherited UncachedGetTablePrivileges(Catalog, SchemaPattern, TableNamePattern);
-
+  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
   RS := OleDBOpenSchema(DBSCHEMA_TABLE_PRIVILEGES,
     [DecomposeObjectString(Catalog), DecomposeObjectString(SchemaPattern), DecomposeObjectString(TableNamePattern)]);
   if Assigned(RS) then
@@ -2225,7 +2374,7 @@ var
   Flags: DWORD;
 begin
   Result:=inherited UncachedGetVersionColumns(Catalog, Schema, Table);
-
+  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
   RS := OleDBOpenSchema(DBSCHEMA_COLUMNS, [DecomposeObjectString(Catalog),
     DecomposeObjectString(Schema), DecomposeObjectString(Table)]);
   if Assigned(RS) then
@@ -2252,28 +2401,6 @@ begin
     end;
 end;
 
-{**
-  Gets a description of a table's primary key columns.  They
-  are ordered by COLUMN_NAME.
-
-  <P>Each primary key column description has the following columns:
-   <OL>
- 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
- 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
- 	<LI><B>TABLE_NAME</B> String => table name
- 	<LI><B>COLUMN_NAME</B> String => column name
- 	<LI><B>KEY_SEQ</B> short => sequence number within primary key
- 	<LI><B>PK_NAME</B> String => primary key name (may be null)
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schema a schema name; "" retrieves those
-  without a schema
-  @param table a table name
-  @return <code>ResultSet</code> - each row is a primary key column description
-  @exception SQLException if a database access error occurs
-}
 function TOleDBDatabaseMetadata.UncachedGetPrimaryKeys(const Catalog: string;
   const Schema: string; const Table: string): IZResultSet;
 const
@@ -2284,7 +2411,7 @@ var
   Len: NativeUInt;
 begin
   Result:=inherited UncachedGetPrimaryKeys(Catalog, Schema, Table);
-
+  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
   RS := OleDBOpenSchema(DBSCHEMA_PRIMARY_KEYS, [DecomposeObjectString(Catalog),
     DecomposeObjectString(Schema), DecomposeObjectString(Table)]);
   if RS <> nil then
@@ -2305,73 +2432,6 @@ begin
     end;
 end;
 
-{**
-  Gets a description of the primary key columns that are
-  referenced by a table's foreign key columns (the primary keys
-  imported by a table).  They are ordered by PKTABLE_CAT,
-  PKTABLE_SCHEM, PKTABLE_NAME, and KEY_SEQ.
-
-  <P>Each primary key column description has the following columns:
-   <OL>
- 	<LI><B>PKTABLE_CAT</B> String => primary key table catalog
-       being imported (may be null)
- 	<LI><B>PKTABLE_SCHEM</B> String => primary key table schema
-       being imported (may be null)
- 	<LI><B>PKTABLE_NAME</B> String => primary key table name
-       being imported
- 	<LI><B>PKCOLUMN_NAME</B> String => primary key column name
-       being imported
- 	<LI><B>FKTABLE_CAT</B> String => foreign key table catalog (may be null)
- 	<LI><B>FKTABLE_SCHEM</B> String => foreign key table schema (may be null)
- 	<LI><B>FKTABLE_NAME</B> String => foreign key table name
- 	<LI><B>FKCOLUMN_NAME</B> String => foreign key column name
- 	<LI><B>KEY_SEQ</B> short => sequence number within foreign key
- 	<LI><B>UPDATE_RULE</B> short => What happens to
-        foreign key when primary is updated:
-       <UL>
-       <LI> importedNoAction - do not allow update of primary
-                key if it has been imported
-       <LI> importedKeyCascade - change imported key to agree
-                with primary key update
-       <LI> importedKeySetNull - change imported key to NULL if
-                its primary key has been updated
-       <LI> importedKeySetDefault - change imported key to default values
-                if its primary key has been updated
-       <LI> importedKeyRestrict - same as importedKeyNoAction
-                                  (for ODBC 2.x compatibility)
-       </UL>
- 	<LI><B>DELETE_RULE</B> short => What happens to
-       the foreign key when primary is deleted.
-       <UL>
-       <LI> importedKeyNoAction - do not allow delete of primary
-                key if it has been imported
-       <LI> importedKeyCascade - delete rows that import a deleted key
-       <LI> importedKeySetNull - change imported key to NULL if
-                its primary key has been deleted
-       <LI> importedKeyRestrict - same as importedKeyNoAction
-                                  (for ODBC 2.x compatibility)
-       <LI> importedKeySetDefault - change imported key to default if
-                its primary key has been deleted
-       </UL>
- 	<LI><B>FK_NAME</B> String => foreign key name (may be null)
- 	<LI><B>PK_NAME</B> String => primary key name (may be null)
- 	<LI><B>DEFERRABILITY</B> short => can the evaluation of foreign key
-       constraints be deferred until commit
-       <UL>
-       <LI> importedKeyInitiallyDeferred - see SQL92 for definition
-       <LI> importedKeyInitiallyImmediate - see SQL92 for definition
-       <LI> importedKeyNotDeferrable - see SQL92 for definition
-       </UL>
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schema a schema name; "" retrieves those
-  without a schema
-  @param table a table name
-  @return <code>ResultSet</code> - each row is a primary key column description
-  @see #getExportedKeys
-}
 function TOleDBDatabaseMetadata.UncachedGetImportedKeys(const Catalog: string;
   const Schema: string; const Table: string): IZResultSet;
 begin
@@ -2551,7 +2611,7 @@ var
 begin
   Result:=inherited UncachedGetCrossReference(PrimaryCatalog, PrimarySchema, PrimaryTable,
                                               ForeignCatalog, ForeignSchema, ForeignTable);
-
+  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
   RS := OleDBOpenSchema(DBSCHEMA_FOREIGN_KEYS, [DecomposeObjectString(PrimaryCatalog),
     DecomposeObjectString(PrimarySchema), DecomposeObjectString(PrimaryTable),
     DecomposeObjectString(ForeignCatalog), DecomposeObjectString(ForeignSchema), DecomposeObjectString(ForeignTable)]);
@@ -2644,14 +2704,42 @@ end;
 
   @return <code>ResultSet</code> - each row is an SQL type description
 }
+{$IFDEF FPC} {$PUSH} {$WARN 5057 off : Local variable "GUID" does not seem to be initialized} {$ENDIF}
 function TOleDBDatabaseMetadata.UncachedGetTypeInfo: IZResultSet;
 const iIS_LONG = TypeInfoNumPrecRadix;
 var
   RS: IZResultSet;
   Len: NativeUInt;
+  TypeInfoColumns: TZMetadataColumnDefs;
+  I: Integer;
+  GUID: TGUID;
+  GUID_Index, TYPE_LIB_Index, VERISON_Index, IS_LONG_Index, BEST_MATCH_Index, IS_FIXEDLENGTH_Index: Integer;
+  procedure Fill(var Index: Integer; const Name: String; SQLType: TZSQLType; L: Integer; out DbcIndex: Integer);
+  begin
+    TypeInfoColumns[Index].Name := Name;
+    TypeInfoColumns[Index].SQLType := SQLType;
+    TypeInfoColumns[Index].Length := L;
+    DbcIndex := Index+FirstDbcIndex;
+    Inc(I);
+  end;
 begin
-  Result:=inherited UncachedGetTypeInfo;
+  TypeInfoColumns := nil;
+  SetLength(TypeInfoColumns, Length(TypeInfoColumnsDynArray)+6);
+  for i := 0 to high(TypeInfoColumnsDynArray) do begin
+    TypeInfoColumns[i].Name := TypeInfoColumnsDynArray[i].Name;
+    TypeInfoColumns[i].SQLType := TypeInfoColumnsDynArray[i].SQLType;
+    TypeInfoColumns[i].Length := TypeInfoColumnsDynArray[i].Length;
+  end;
+  I := high(TypeInfoColumnsDynArray);
+  Fill(I, 'GUID', stGUID, SizeOf(TGUID), GUID_Index);
+  Fill(I, 'TYPELIB', stUnicodeString, 255, TYPE_LIB_Index);
+  Fill(I, 'VERSION', stUnicodeString, 255, VERISON_Index);
+  Fill(I, 'IS_LONG', stBoolean, SizeOf(WordBool), IS_LONG_Index);
+  Fill(I, 'BEST_MATCH', stBoolean, SizeOf(WordBool), BEST_MATCH_Index);
+  Fill(I, 'IS_FIXEDLENGTH', stBoolean, SizeOf(WordBool), IS_FIXEDLENGTH_Index);
 
+  Result := ConstructVirtualResultSet(TypeInfoColumns);
+  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
   RS := OleDBOpenSchema(DBSCHEMA_PROVIDER_TYPES, []);
   if RS <> nil then
     with RS do begin
@@ -2673,20 +2761,36 @@ begin
         Result.UpdatePWideChar(TypeInfoLocaleTypeNameIndex, GetPWideChar(TypeInfoLocaleTypeNameIndex, Len), Len);
         Result.UpdateSmall(TypeInfoMinimumScaleIndex, GetSmall(TypeInfoMinimumScaleIndex));
         Result.UpdateSmall(TypeInfoMaximumScaleIndex, GetSmall(TypeInfoMaximumScaleIndex));
-        //GUID
-        //TYPE_LIB
-        //IS_LONG
-        //BEST_MATCH
-        //IS_FIXEDLENGTH
+        Result.UpdateSmall(TypeInfoSQLDataTypeIndex, GetSmall(TypeInfoDataTypeIndex));
         { NA }
-        //Result.UpdateSmall(TypeInfoSQLDataTypeIndex, GetSmallByName('SQL_DATA_TYPE'));
         //Result.UpdateSmall(TypeInfoSQLDateTimeSubIndex, GetSmallByName('SQL_DATETIME_SUB'));
         //Result.UpdateSmall(TypeInfoNumPrecRadix, GetSmallByName('NUM_PREC_RADIX'));
+        I := FindColumn('GUID');
+        if (i <> InvalidDbcIndex) and not IsNull(i) then begin
+          GetGUID(I, GUID);
+          Result.UpdateGUID(GUID_Index, GUID);
+        end;
+        I := FindColumn('TYPELIB');
+        if i <> InvalidDbcIndex then
+          Result.UpdatePWideChar(VERISON_Index, GetPWideChar(I, Len), Len);
+        I := FindColumn('VERSION');
+        if i <> InvalidDbcIndex then
+          Result.UpdatePWideChar(VERISON_Index, GetPWideChar(I, Len), Len);
+        I := FindColumn('IS_LONG');
+        if i <> InvalidDbcIndex then
+          Result.UpdateBoolean(IS_LONG_Index, GetBoolean(I));
+        I := FindColumn('BEST_MATCH');
+        if i <> InvalidDbcIndex then
+          Result.UpdateBoolean(BEST_MATCH_Index, GetBoolean(I));
+        I := FindColumn('IS_FIXEDLENGTH');
+        if i <> InvalidDbcIndex then
+          Result.UpdateBoolean(IS_FIXEDLENGTH_Index, GetBoolean(I));
         Result.InsertRow;
       end;
       Close;
     end;
 end;
+{$IFDEF FPC} {$POP} {$ENDIF}
 
 {**
   Gets a description of a table's indices and statistics. They are
@@ -2747,7 +2851,7 @@ var
   Len: NativeUInt;
 begin
   Result:=inherited UncachedGetIndexInfo(Catalog, Schema, Table, Unique, Approximate);
-
+  {$IFDEF WITH_VAR_INIT_WARNING}Len := 0;{$ENDIF}
   RS := OleDBOpenSchema(DBSCHEMA_INDEXES,[DecomposeObjectString(Catalog), DecomposeObjectString(Schema), '', '', Table]);
   if RS <> nil then
     with RS do
@@ -2854,6 +2958,7 @@ begin
   SchemaID := FindSchema(Schema);
   if SchemaID = -1 then Exit;
   OleDBConnection := GetConnection as IZOleDBConnection;
+  FByteBuffer := OleDBConnection.GetByteBufferAddress;
   try
     OleCheck(OleDBConnection.GetSession.QueryInterface(IID_IDBSchemaRowset, SchemaRS));
     {$IFDEF WITH_VAR_INIT_WARNING}OleArgs := nil;{$ENDIF}
@@ -2870,7 +2975,7 @@ begin
         'IDBSchemaRowset.GetRowset', OleDBConnection);
     if Assigned(RowSet) then begin
       Stmt := GetStatement;
-      Result := TZOleDBResultSet.Create(Stmt, '', RowSet, (Stmt as IZOleDBPreparedStatement).GetInternalBufferSize, True);
+      Result := TZOleDBMetadataResultSet.Create(Stmt, RowSet, (Stmt as IZOleDBPreparedStatement).GetInternalBufferSize);
     end;
   finally
     SchemaRS := nil;

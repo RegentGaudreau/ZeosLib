@@ -220,6 +220,12 @@ begin
     CheckEquals(3, SL.Count, 'split count 3');
     for I := 0 to SL.Count -1 do
       CheckEquals('gg', SL[i], '2. Splitted String');
+    SourceStr := 'abcd,efghi';
+    DelimiterStr := ',';
+    PutSplitStringEx(SL, SourceStr, DelimiterStr);
+    CheckEquals(2, SL.Count, 'split count 3');
+    CheckEquals('abcd', SL[0], '1. Splitted String');
+    CheckEquals('efghi', SL[1], '2. Splitted String');
   finally
     SL.Free;
   end;
@@ -417,6 +423,10 @@ var
   var
     Left, Right: string;
   begin
+    {$IFDEF WITH_VAR_INIT_WARNING}
+    Left := '';
+    Right := '';
+    {$ENDIF}
     BreakString(Str, Delim, Left, Right);
     CheckEquals(ExpLeft, Left);
     CheckEquals(ExpRight, Right);
@@ -436,6 +446,9 @@ begin
   CheckBreakString('aa'+Delim+'bb', 'aa', 'bb');
 
   S := 'aa'+Delim+'bb';
+  {$IFDEF WITH_VAR_INIT_WARNING}
+  S1 := '';
+  {$ENDIF}
   BreakString(S, Delim, S1, S);
   CheckEquals('aa', S1);
   CheckEquals('bb', S);

@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -48,6 +48,12 @@
 {                                                         }
 {                                 Zeos Development Group. }
 {********************************************************@}
+
+(*
+constributors:
+  Mark Ford(MJFShark)
+  Miab3
+*)
 
 unit ZDbcOleDB;
 
@@ -64,29 +70,66 @@ uses
   ZPlainOleDBDriver, ZOleDBToken;
 
 type
-  {** Implements OleDB Database Driver. }
+  /// <summary>Implements an OleDB Database Driver.</summary>
   TZOleDBDriver = class(TZAbstractDriver)
   public
+    /// <summary>Constructs this object with default properties.</summary>
     constructor Create; override;
+    /// <summary>Attempts to create a database connection to the given URL.
+    ///  The driver should return "null" if it realizes it is the wrong kind
+    ///  of driver to connect to the given URL. This will be common, as when
+    ///  the zeos driver manager is asked to connect to a given URL it passes
+    ///  the URL to each loaded driver in turn.
+    ///  The driver should raise a EZSQLException if it is the right
+    ///  driver to connect to the given URL, but has trouble loading the
+    ///  library.</summary>
+    /// <param>"url" the TZURL Object used to find the Driver, it's library and
+    ///  assigns the connection properties.</param>
+    /// <returns>a <c>IZConnection</c> interface that represents a
+    ///  connection to the URL</returns>
     function Connect(const Url: TZURL): IZConnection; override;
+    /// <summary>Creates a generic tokenizer interface.</summary>
+    /// <returns>a created generic tokenizer object.</returns>
     function GetTokenizer: IZTokenizer; override;
   end;
 
-  {** Defines a PostgreSQL specific connection. }
+  /// <summary>Defines an OleDB specific connection interface</summary>
   IZOleDBConnection = interface(IZConnection)
     ['{35A72582-F758-48B8-BBF7-3267EEBC9750}']
+    /// <summary>Get the current session interface as IUnknown.</summary>
+    /// <returns>the session interface or nil if not connected.</returns>
     function GetSession: IUnknown;
+    /// <summary>Creates a new command as ICommandText.</summary>
+    /// <returns>the created command interface.</returns>
     function CreateCommand: ICommandText;
+    /// <summary>Get the current MAlloc interface as IMalloc.</summary>
+    /// <returns>the Malloc interface.</returns>
     function GetMalloc: IMalloc;
+    /// <summary>Check if multiple active resultsets are supported</summary>
+    /// <returns><c>true</c> if MARS is supported.</returns>
     function SupportsMARSConnection: Boolean;
+    /// <summary>Get the address of the static connecetion TByteBuffer</summary>
+    /// <returns>the address of the connection buffer</returns>
     function GetByteBufferAddress: PByteBuffer;
+    /// <summary>Handle an error or a warning. Note: this method should be
+    ///  called only if the status is in error or warning range.</summary>
+    /// <param>"Status" the current status received by a call of any OleDB
+    ///  interface method</param>
+    /// <param>"LoggingCategory" the logging category used to log the error or
+    ///  warning if a listenter is registered on the driver manager</param>
+    /// <param>"LogMessage" the logging message used to log the error or
+    ///  warning if a listenter is registered on the driver manager</param>
+    /// <param>"Sender" the calling interface which may release the resources if
+    ///  a connection loss happens</param>
+    /// <param>"aStatus" a binding status array used for extended binding
+    /// failures or nil.</param>
     procedure HandleErrorOrWarning(Status: HRESULT; LoggingCategory: TZLoggingCategory;
       const LogMessage: SQLString; const Sender: IImmediatelyReleasable;
       const aStatus: TDBBINDSTATUSDynArray = nil);
   end;
 
-  {** Implements a generic OleDB Connection. }
-  TZOleDBConnection = class(TZAbstractSuccedaneousTxnConnection, IZConnection,
+  /// <summary>Implements an OleDB specific connection object.</summary>
+  TZOleDBConnection = class(TZAbstractSingleTxnConnection, IZConnection,
     IZOleDBConnection, IZTransaction)
   private
     FMalloc: IMalloc;
@@ -101,54 +144,211 @@ type
     FAutoCommitTIL: ISOLATIONLEVEL;
     FRestartTransaction: Boolean;
     FLastWarning: EZSQLWarning;
+    FHostVersion: Integer;
+    /// <summary>Sets provider properties</summary>
     procedure SetProviderProps(DBinit: Boolean);
   protected
     function OleDbGetDBPropValue(const APropIDs: array of DBPROPID): string; overload;
     function OleDbGetDBPropValue(APropID: DBPROPID): Integer; overload;
     procedure InternalSetTIL(Level: TZTransactIsolationLevel);
+    /// <summary>Immediately execute a query and do nothing with the results.</summary>
+    /// <remarks>A new driver needs to implement one of the overloads.</remarks>
+    /// <param>"SQL" a UTF16 encoded query to be executed.</param>
+    /// <param>"LoggingCategory" the LoggingCategory for the Logging listeners.</param>
     procedure ExecuteImmediat(const SQL: UnicodeString; LoggingCategory: TZLoggingCategory); overload; override;
+    /// <summary>Releases a Connection's database and resources immediately
+    ///  instead of waiting for them to be automatically released.</summary>
+    ///  Note: A Connection is automatically closed when it is garbage
+    ///  collected. Certain fatal errors also result in a closed Connection.</summary>
     procedure InternalClose; override;
   public
     procedure AfterConstruction; override;
+    /// <summary>Destroys this object and cleanups the memory.</summary>
     destructor Destroy; override;
   public
-    function CreateStatementWithParams(Info: TStrings): IZStatement;
-    function PrepareCallWithParams(const Name: String; Info: TStrings):
+    /// <summary>Creates a <c>Statement</c> interface for sending SQL statements
+    ///  to the database. SQL statements without parameters are normally
+    ///  executed using Statement objects. If the same SQL statement
+    ///  is executed many times, it is more efficient to use a
+    ///  <c>PreparedStatement</c> object. Result sets created using the returned
+    ///  <c>Statement</c> interface will by default have forward-only type and
+    ///  read-only concurrency.</summary>
+    /// <param>Info a statement parameters.</param>
+    /// <returns>A new Statement interface</returns>
+    function CreateStatementWithParams(Params: TStrings): IZStatement;
+    /// <summary>Creates a <code>CallableStatement</code> object for calling
+    ///  database stored procedures. The <code>CallableStatement</code> object
+    ///  provides methods for setting up its IN and OUT parameters, and methods
+    ///  for executing the call to a stored procedure. Note: This method is
+    ///  optimized for handling stored procedure call statements. Some drivers
+    ///  may send the call statement to the database when the method
+    ///  <c>prepareCall</c> is done; others may wait until the
+    ///  <c>CallableStatement</c> object is executed. This has no direct effect
+    ///  on users; however, it does affect which method throws certain
+    ///  EZSQLExceptions. Result sets created using the returned
+    ///  IZCallableStatement will have forward-only type and read-only
+    ///  concurrency, by default.</summary>
+    /// <param>"Name" a procedure or function name.</param>
+    /// <param>"Params" a statement parameters list.</param>
+    /// <returns> a new IZCallableStatement interface containing the
+    ///  pre-compiled SQL statement </returns>
+    function PrepareCallWithParams(const Name: String; Params: TStrings):
       IZCallableStatement;
+    /// <summary>Creates a <c>PreparedStatement</c> interface for sending
+    ///  parameterized SQL statements to the database. A SQL statement with
+    ///  or without IN parameters can be pre-compiled and stored in a
+    ///  PreparedStatement object. This object can then be used to efficiently
+    ///  execute this statement multiple times.
+    ///  Note: This method is optimized for handling parametric SQL statements
+    ///  that benefit from precompilation. If the driver supports
+    ///  precompilation, the method <c>prepareStatement</c> will send the
+    ///  statement to the database for precompilation. Some drivers may not
+    ///  support precompilation. In this case, the statement may not be sent to
+    ///  the database until the <c>PreparedStatement</c> is executed. This has
+    ///  no direct effect on users; however, it does affect which method throws
+    ///  certain SQLExceptions. Result sets created using the returned
+    ///  PreparedStatement will have forward-only type and read-only
+    ///  concurrency, by default.</summary>
+    /// <param>"SQL" a SQL statement that may contain one or more '?' IN
+    ///  parameter placeholders.</param>
+    /// <param> Info a statement parameter list.</param>
+    /// <returns> a new PreparedStatement object containing the
+    ///  optional pre-compiled statement</returns>
     function PrepareStatementWithParams(const SQL: string; Info: TStrings):
       IZPreparedStatement;
-
+    /// <summary>Opens a connection to database server with specified parameters.</summary>
     procedure Open; override;
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  released. Otherwise makes all changes made since the previous commit/
+    ///  rollback permanent and releases any database locks currently held by
+    ///  the Connection. This method should be used only when auto-commit mode
+    ///  has been disabled. See setAutoCommit.</summary>
     procedure Commit;
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  rolled back. Otherwise drops all changes made since the previous
+    ///  commit/rollback and releases any database locks currently held by this
+    ///  Connection. This method should be used only when auto-commit has been
+    ///  disabled. See setAutoCommit.</summary>
     procedure Rollback;
+    /// <summary>Sets this connection's auto-commit mode. If a connection is in
+    ///  auto-commit mode, then all its SQL statements will be executed and
+    ///  committed as individual transactions. Otherwise, its SQL statements are
+    ///  grouped into transactions that are terminated by a call to either the
+    ///  method <c>commit</c> or the method <c>rollback</c>. By default, new
+    ///  connections are in auto-commit mode. The commit occurs when the
+    ///  statement completes or the next execute occurs, whichever comes first.
+    ///  In the case of statements returning a ResultSet, the statement
+    ///  completes when the last row of the ResultSet has been retrieved or the
+    ///  ResultSet has been closed. In advanced cases, a single statement may
+    ///  return multiple results as well as output parameter values. In these
+    ///  cases the commit occurs when all results and output parameter values
+    ///  have been retrieved. It is not recommented setting autoCommit to false
+    ///  because a call to either the method <c>commit</c> or the method
+    ///  <c>rollback</c> will restart the transaction. It's use full only if
+    ///  repeately many opertions are done and no startTransaction is intended
+    ///  to use. If you change mode to true the current Transaction and it's
+    ///  nested SavePoints are committed then.</summary>
+    /// <param>"Value" true enables auto-commit; false disables auto-commit.</param>
     procedure SetAutoCommit(Value: Boolean); override;
+    /// <summary>Attempts to change the transaction isolation level to the one
+    ///  given. The constants defined in the interface <c>Connection</c> are the
+    ///  possible transaction isolation levels. Note: This method cannot be
+    ///  called while in the middle of a transaction.
+    /// <param>"value" one of the TRANSACTION_* isolation values with the
+    ///  exception of TRANSACTION_NONE; some databases may not support other
+    ///  values. See DatabaseInfo.SupportsTransactionIsolationLevel</param>
     procedure SetTransactionIsolation(Level: TZTransactIsolationLevel); override;
+    /// <summary>Starts transaction support or saves the current transaction.
+    ///  If the connection is closed, the connection will be opened.
+    ///  If a transaction is underway a nested transaction or a savepoint will
+    ///  be spawned. While the tranaction(s) is/are underway the AutoCommit
+    ///  property is set to False. Ending up the transaction with a
+    ///  commit/rollback the autocommit property will be restored if changing
+    ///  the autocommit mode was triggered by a starttransaction call.</summary>
+    /// <returns>Returns the current txn-level. 1 means a expicit transaction
+    ///  was started. 2 means the transaction was saved. 3 means the previous
+    ///  savepoint got saved too and so on.</returns>
     function StartTransaction: Integer;
-
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable;
       var AError: EZSQLConnectionLost); override;
-
     {procedure SetReadOnly(ReadOnly: Boolean); override; }
-
+    /// <summary>Sets a catalog name in order to select a subspace of this
+    ///  Connection's database in which to work. If the driver does not support
+    ///  catalogs, it will silently ignore this request.</summary>
+    /// <param>"value" new catalog name to be used.</param>
     procedure SetCatalog(const Catalog: string); override;
+    /// <summary>Returns the Connection's current catalog name.</summary>
+    /// <returns>the current catalog name or an empty string.</returns>
     function GetCatalog: string; override;
-
+    /// <summary>Returns the first warning reported by calls on this Connection.</summary>
+    /// <remarks>Subsequent warnings will be chained to this EZSQLWarning.</remarks>
+    /// <returns>the first SQLWarning or nil.</returns>
     function GetWarnings: EZSQLWarning; override;
+    /// <summary>Clears all warnings reported for this <c>Connection</c> object.
+    ///  After a call to this method, the method <c>getWarnings</c> returns nil
+    ///  until a new warning is reported for this Connection.</summary>
     procedure ClearWarnings; override;
-
+    /// <summary>Returns the ServicerProvider for this connection. For OLEDB
+    ///  the connection must be opened to determine the provider. Otherwise
+    ///  the provider is tested against the driver names</summary>
+    /// <returns>the ServerProvider or spUnknown if not known.</returns>
     function GetServerProvider: TZServerProvider; override;
-  public { IZOleDBConnection }
+    /// <author>fduenas</author>
+    /// <summary>Gets the host's full version number. Initially this should be 0.
+    ///  The format of the version returned must be XYYYZZZ where
+    ///  X   = Major version
+    ///  YYY = Minor version
+    ///  ZZZ = Sub version</summary>
+    /// <returns>this server's full version number</returns>
+    function GetHostVersion: Integer; override;
+    /// <summary>Creates a generic tokenizer interface.</summary>
+    /// <returns>a created generic tokenizer object.</returns>
+    function GetTokenizer: IZTokenizer;
+    /// <summary>Creates a generic statement analyser object.</summary>
+    /// <returns>a created generic tokenizer object as interface.</returns>
+    function GetStatementAnalyser: IZStatementAnalyser;
+  public { implement IZOleDBConnection }
+    /// <summary>Get the current session interface as IUnknown.</summary>
+    /// <returns>the session interface or nil if not connected.</returns>
     function GetSession: IUnknown;
+    /// <summary>Creates a new command as ICommandText.</summary>
+    /// <returns>the created command interface.</returns>
     function CreateCommand: ICommandText;
+    /// <summary>Get the current MAlloc interface as IMalloc.</summary>
+    /// <returns>the Malloc interface.</returns>
     function GetMalloc: IMalloc;
+    /// <summary>Check if multiple active resultsets are supported</summary>
+    /// <returns><c>true</c> if MARS is supported.</returns>
     function SupportsMARSConnection: Boolean;
+    /// <summary>Handle an error or a warning. Note: this method should be
+    ///  called only if the status is in error or warning range.</summary>
+    /// <param>"Status" the current status received by a call of any OleDB
+    ///  interface method</param>
+    /// <param>"LoggingCategory" the logging category used to log the error or
+    ///  warning if a listenter is registered on the driver manager</param>
+    /// <param>"LogMessage" the logging message used to log the error or
+    ///  warning if a listenter is registered on the driver manager</param>
+    /// <param>"Sender" the calling interface which may release the resources if
+    ///  a connection loss happens</param>
+    /// <param>"aStatus" a binding status array used for extended binding
+    /// failures or nil.</param>
     procedure HandleErrorOrWarning(Status: HRESULT; LoggingCategory:  TZLoggingCategory;
       const LogMessage: SQLString; const Sender: IImmediatelyReleasable;
       const aStatus: TDBBINDSTATUSDynArray = nil);
   end;
 
 var
-  {** The common driver manager object. }
   OleDBDriver: IZDriver;
 
 {$ENDIF ZEOS_DISABLE_OLEDB} //if set we have an empty unit
@@ -157,51 +357,24 @@ implementation
 
 uses TypInfo,
   ZSysUtils, ZDbcUtils, ZEncoding, ZMessages, ZFastCode, ZClasses,
+  ZPostgreSqlAnalyser, ZPostgreSqlToken, ZSybaseAnalyser, ZSybaseToken,
+  ZInterbaseAnalyser, ZInterbaseToken, ZMySqlAnalyser, ZMySqlToken,
+  ZOracleAnalyser, ZOracleToken,
   ZDbcOleDBMetadata, ZDbcOleDBStatement, ZDbcProperties;
 
 { TZOleDBDriver }
 
-{**
-  Constructs this object with default properties.
-}
 constructor TZOleDBDriver.Create;
 begin
   inherited Create;
   AddSupportedProtocol(AddPlainDriverToCache(TZOleDBPlainDriver.Create));
 end;
 
-{**
-  Attempts to make a database connection to the given URL.
-  The driver should return "null" if it realizes it is the wrong kind
-  of driver to connect to the given URL.  This will be common, as when
-  the JDBC driver manager is asked to connect to a given URL it passes
-  the URL to each loaded driver in turn.
-
-  <P>The driver should raise a SQLException if it is the right
-  driver to connect to the given URL, but has trouble connecting to
-  the database.
-
-  <P>The java.util.Properties argument can be used to passed arbitrary
-  string tag/value pairs as connection arguments.
-  Normally at least "user" and "password" properties should be
-  included in the Properties.
-
-  @param url the URL of the database to which to connect
-  @param info a list of arbitrary string tag/value pairs as
-    connection arguments. Normally at least a "user" and
-    "password" property should be included.
-  @return a <code>Connection</code> object that represents a
-    connection to the URL
-}
 function TZOleDBDriver.Connect(const Url: TZURL): IZConnection;
 begin
   Result := TZOleDBConnection.Create(Url);
 end;
 
-{**
-  Gets a SQL syntax tokenizer.
-  @returns a SQL syntax tokenizer object.
-}
 function TZOleDBDriver.GetTokenizer: IZTokenizer;
 begin
   Result := TZOleDBTokenizer.Create;
@@ -235,6 +408,7 @@ const
      ISOLATIONLEVEL_REPEATABLEREAD,
      ISOLATIONLEVEL_SERIALIZABLE);
 
+{$IFDEF WITH_NOT_INLINED_WARNING}{$PUSH}{$WARN 6058 off : Call to subroutine "operator:=(const sourc:Longword):OleVariant" marked as inline is not inlined}{$ENDIF}
 procedure TZOleDBConnection.InternalSetTIL(Level: TZTransactIsolationLevel);
 var
   rgDBPROPSET_DBPROPSET_SESSION: TDBProp;
@@ -257,10 +431,8 @@ begin
     FAutoCommitTIL := TIL[Level];
   end;
 end;
+{$IFDEF WITH_NOT_INLINED_WARNING}{$POP}{$ENDIF}
 
-{**
-  Destroys this object and cleanups the memory.
-}
 destructor TZOleDBConnection.Destroy;
 begin
   try
@@ -297,26 +469,6 @@ begin
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
-{**
-  Sets this connection's auto-commit mode.
-  If a connection is in auto-commit mode, then all its SQL
-  statements will be executed and committed as individual
-  transactions.  Otherwise, its SQL statements are grouped into
-  transactions that are terminated by a call to either
-  the method <code>commit</code> or the method <code>rollback</code>.
-  By default, new connections are in auto-commit mode.
-
-  The commit occurs when the statement completes or the next
-  execute occurs, whichever comes first. In the case of
-  statements returning a ResultSet, the statement completes when
-  the last row of the ResultSet has been retrieved or the
-  ResultSet has been closed. In advanced cases, a single
-  statement may return multiple results as well as output
-  parameter values. In these cases the commit occurs when all results and
-  output parameter values have been retrieved.
-
-  @param autoCommit true enables auto-commit; false disables auto-commit.
-}
 procedure TZOleDBConnection.SetAutoCommit(Value: Boolean);
 var Status: HResult;
 begin
@@ -341,12 +493,6 @@ begin
   end;
 end;
 
-{**
-  Sets a catalog name in order to select
-  a subspace of this Connection's database in which to work.
-  If the driver does not support catalogs, it will
-  silently ignore this request.
-}
 procedure TZOleDBConnection.SetCatalog(const Catalog: string);
 begin
   if Catalog <> '' then
@@ -369,6 +515,7 @@ var
   PropertySets: array[0..2] of TDBPROPSET;
   cPropertySets: ULONG;
   Status: HResult;
+  {$IFDEF WITH_NOT_INLINED_WARNING}{$PUSH}{$WARN 6058 off : Call to subroutine "operator:=(const source:smallInt):OleVariant" marked as inline is not inlined}{$ENDIF}
   procedure SetProp(var PropSet: TDBPROPSET; PropertyID: DBPROPID; Value: SmallInt);
   begin
     //initialize common property options
@@ -380,6 +527,7 @@ var
     PropSet.rgProperties^[PropSet.cProperties].vValue       := Value;
     Inc(PropSet.cProperties);
   end;
+  {$IFDEF WITH_NOT_INLINED_WARNING}{$POP}{$ENDIF}
 begin
 //some examples: https://blogs.msdn.microsoft.com/sqlnativeclient/2009/05/06/sql-server-native-client-connection-strings-and-ole-db/
   DBProps := nil; //init
@@ -404,7 +552,7 @@ begin
       SetProp(PropertySets[0], DBPROP_INIT_GENERALTIMEOUT,StrToIntDef(Info.Values[ConnProps_Timeout], 0));
       //Force Multiple connections -> prevent transactional issues with IDBSchemaRowSet etc
       //http://support2.microsoft.com/default.aspx?scid=kb;en-us;272358
-      SetProp(PropertySets[1], DBPROP_MULTIPLECONNECTIONS,VARIANT_TRUE);
+      SetProp(PropertySets[1], DBPROP_MULTIPLECONNECTIONS,ZVARIANT_TRUE);
       //supported for MSSQL only!!!
       if (Info.Values[ConnProps_TDSPacketSize] <> '') then
       begin
@@ -419,7 +567,7 @@ begin
         PropertySets[0].cProperties     := 0; //init
         PropertySets[0].guidPropertySet := DBPROPSET_DATASOURCE;
         PropertySets[0].rgProperties    := @rgDBPROPSET[0];
-        SetProp(PropertySets[0], DBPROP_MULTIPLECONNECTIONS,VARIANT_FALSE);
+        SetProp(PropertySets[0], DBPROP_MULTIPLECONNECTIONS,ZVARIANT_FALSE);
         cPropertySets := 1;
       end
       else
@@ -459,6 +607,7 @@ end;
 
 // returns property value(-s) from Data Source Information group as string,
 //where values are delimited using space
+{$IFDEF WITH_NOT_INLINED_WARNING}{$PUSH}{$WARN 6058 off : Call to subroutine "operator:=(const source:OleVariant):AnsiString" marked as inline is not inlined}{$ENDIF}
 function TZOleDBConnection.OleDbGetDBPropValue(const APropIDs: array of DBPROPID): string;
 var
   DBProperties: IDBProperties;
@@ -482,7 +631,6 @@ begin
     Status := DBProperties.GetProperties(1, @PropIDSet, nPropertySets, prgPropertySets );
     if Status <> S_OK then
       HandleErrorOrWarning(Status, lcOther, 'IID_IDBProperties.GetProperties', Self, nil);
-    Assert( nPropertySets = 1 );
     PropSet := prgPropertySets^;
     for i := 0 to PropSet.cProperties-1 do begin
       if PropSet.rgProperties^[i].dwStatus <> DBPROPSTATUS(DBPROPSTATUS_OK) then
@@ -504,43 +652,36 @@ begin
     DBProperties := nil;
   end;
 end;
+{$IFDEF WITH_NOT_INLINED_WARNING}{$POP}{$ENDIF}
 
-{**
-  Returns the Connection's current catalog name.
-  @return the current catalog name or null
-}
 function TZOleDBConnection.GetCatalog: string;
 begin
   Result := fCatalog;
 end;
 
-{**
-  Creates a <code>Statement</code> object for sending
-  SQL statements to the database.
-  SQL statements without parameters are normally
-  executed using Statement objects. If the same SQL statement
-  is executed many times, it is more efficient to use a
-  <code>PreparedStatement</code> object.
-  <P>
-  Result sets created using the returned <code>Statement</code>
-  object will by default have forward-only type and read-only concurrency.
-
-  @param Info a statement parameters.
-  @return a new Statement object
-}
-function TZOleDBConnection.CreateStatementWithParams(
-  Info: TStrings): IZStatement;
+function TZOleDBConnection.GetHostVersion: Integer;
+  procedure DetermineProductVersion;
+  var ProductVersion: String;
+  begin
+    ProductVersion := GetMetadata.GetDatabaseInfo.GetDatabaseProductVersion;
+    fHostVersion := SQLServerProductToHostVersion(ProductVersion);
+  end;
 begin
-  if Closed then Open;
-  Result := TZOleDBPreparedStatement.Create(Self, '', Info);
+  if (fHostVersion = -1) then
+    DetermineProductVersion;
+  Result := fHostVersion;
 end;
 
-{**
-  Returs the OleSession interface of current connection
-}
+function TZOleDBConnection.CreateStatementWithParams(
+  Params: TStrings): IZStatement;
+begin
+  if Closed then Open;
+  Result := TZOleDBPreparedStatement.Create(Self, '', Params);
+end;
+
 function TZOleDBConnection.GetServerProvider: TZServerProvider;
 begin
-  Result := spMSSQL;
+  Result := FServerProvider;
 end;
 
 function TZOleDBConnection.GetSession: IUnknown;
@@ -548,12 +689,36 @@ begin
   Result := FDBCreateCommand;
 end;
 
-{**
-  Returns the first warning reported by calls on this Connection.
-  <P><B>Note:</B> Subsequent warnings will be chained to this
-  SQLWarning.
-  @return the first SQLWarning or null
-}
+function TZOleDBConnection.GetStatementAnalyser: IZStatementAnalyser;
+begin
+  case FServerProvider of
+    //spUnknown, spMSSQL, spMSJet,
+    spOracle: Result := TZOracleStatementAnalyser.Create;
+    spMSSQL, spASE, spASA: Result := TZSybaseStatementAnalyser.Create;
+    spPostgreSQL: Result := TZPostgreSQLStatementAnalyser.Create;
+    spIB_FB: Result := TZInterbaseStatementAnalyser.Create;
+    spMySQL: Result := TZMySQLStatementAnalyser.Create;
+    //spNexusDB, spSQLite, spDB2, spAS400,
+    //spInformix, spCUBRID, spFoxPro
+    else Result := TZGenericStatementAnalyser.Create;
+  end;
+end;
+
+function TZOleDBConnection.GetTokenizer: IZTokenizer;
+begin
+  case FServerProvider of
+    //spUnknown, spMSJet,
+    spOracle: Result := TZOracleTokenizer.Create;
+    spMSSQL, spASE, spASA: Result := TZSybaseTokenizer.Create;
+    spPostgreSQL: Result := TZPostgreSQLTokenizer.Create;
+    spIB_FB: Result := TZInterbaseTokenizer.Create;
+    spMySQL: Result := TZMySQLTokenizer.Create;
+    //spNexusDB, spSQLite, spDB2, spAS400,
+    //spInformix, spCUBRID, spFoxPro
+    else Result := TZOleDBTokenizer.Create;
+  end;
+end;
+
 function TZOleDBConnection.GetWarnings: EZSQLWarning;
 begin
   Result := FLastWarning;
@@ -759,9 +924,6 @@ begin
     raise Error;
 end;
 
-{**
-  Returs the Ole-ICommandText interface of current connection
-}
 function TZOleDBConnection.CreateCommand: ICommandText;
 var Status: HResult;
 begin
@@ -771,9 +933,6 @@ begin
     HandleErrorOrWarning(Status, lcOther, 'create command', Self, nil);
 end;
 
-{**
-  Returs the Ole-IMalloc interface of current thread
-}
 function TZOleDBConnection.GetMalloc: IMalloc;
 begin
   Result := FMalloc;
@@ -784,10 +943,6 @@ begin
   Result := FSupportsMARSConnnection;
 end;
 
-{**
-  Sets a new transact isolation level.
-  @param Level a new transact isolation level.
-}
 procedure TZOleDBConnection.SetTransactionIsolation(Level: TZTransactIsolationLevel);
 begin
   if (TransactIsolationLevel <> Level) then begin
@@ -806,27 +961,16 @@ begin
   OleCheck(CoGetMalloc(1,fMalloc));
   FMetadata := TOleDBDatabaseMetadata.Create(Self, URL);
   Inherited SetAutoCommit(True);
+  FHostVersion := -1;
   inherited AfterConstruction;
 end;
 
-{**
-  Clears all warnings reported for this <code>Connection</code> object.
-  After a call to this method, the method <code>getWarnings</code>
-    returns null until a new warning is reported for this Connection.
-}
 procedure TZOleDBConnection.ClearWarnings;
 begin
   if FLastWarning <> nil then
     FreeAndNil(FLastWarning);
 end;
 
-{**
-  Makes all changes made since the previous
-  commit/rollback permanent and releases any database locks
-  currently held by the Connection. This method should be
-  used only when auto-commit mode has been disabled.
-  @see #setAutoCommit
-}
 procedure TZOleDBConnection.Commit;
 var S: UnicodeString;
   Status: HResult;
@@ -868,13 +1012,6 @@ begin
   inherited ReleaseImmediat(Sender, AError);
 end;
 
-{**
-  Drops all changes made since the previous
-  commit/rollback and releases any database locks currently held
-  by this Connection. This method should be used only when auto-
-  commit has been disabled.
-  @see #setAutoCommit
-}
 procedure TZOleDBConnection.Rollback;
 var S: UnicodeString;
   Status: HResult;
@@ -904,6 +1041,7 @@ begin
   end;
 end;
 
+{$IFDEF WITH_NOT_INLINED_WARNING}{$PUSH}{$WARN 6058 off : Call to subroutine "operator:=(const source:OleVariant):LongInt" marked as inline is not inlined}{$ENDIF}
 function TZOleDBConnection.OleDbGetDBPropValue(APropID: DBPROPID): Integer;
 var
   DBProperties: IDBProperties;
@@ -925,7 +1063,6 @@ begin
     Status := DBProperties.GetProperties( 1, @PropIDSet, nPropertySets, prgPropertySets );
     if Status <> S_OK then
       HandleErrorOrWarning(Status, lcOther, 'IID_IDBProperties.GetProperties', Self, nil);
-    Assert( nPropertySets = 1 );
     PropSet := prgPropertySets^;
     for i := 0 to PropSet.cProperties-1 do begin
       if PropSet.rgProperties^[i].dwStatus <> DBPROPSTATUS(DBPROPSTATUS_OK) then
@@ -941,10 +1078,8 @@ begin
     DBProperties := nil;
   end;
 end;
+{$IFDEF WITH_NOT_INLINED_WARNING}{$POP}{$ENDIF}
 
-{**
-  Opens a connection to database server with specified parameters.
-}
 procedure TZOleDBConnection.Open;
 var
   DataInitialize : IDataInitialize;
@@ -975,7 +1110,8 @@ begin
     OleCheck(DataInitialize.GetDataSource(nil,CLSCTX_INPROC_SERVER,
       Pointer(ConnectString), IID_IDBInitialize,IUnknown(fDBInitialize)));
     DataInitialize := nil; //no longer required!
-    SetProviderProps(True); //set's timeout values
+    if FServerProvider <> spMSJet then
+      SetProviderProps(True); //set's timeout values
     // open the connection to the DB
     Status := fDBInitialize.Initialize;
     if Status <> S_OK then
@@ -993,8 +1129,11 @@ begin
       InternalSetTIL(TransactIsolationLevel);
     FAutoCommitTIL := TIL[TransactIsolationLevel];
     CheckCharEncoding('CP_UTF16'); //do this by default!
-    (GetMetadata.GetDatabaseInfo as IZOleDBDatabaseInfo).InitilizePropertiesFromDBInfo(fDBInitialize, fMalloc);
-    if (GetServerProvider = spMSSQL) then begin
+    With (GetMetadata.GetDatabaseInfo as IZOleDBDatabaseInfo) do begin
+      InitilizePropertiesFromDBInfo(fDBInitialize, fMalloc);
+      DBProviderName2ServerProvider(GetDatabaseProductName, FServerProvider);
+    end;
+    if (FServerProvider = spMSSQL) then begin
       if (Info.Values[ConnProps_DateWriteFormat] = '') or (Info.Values[ConnProps_DateTimeWriteFormat] = '') then begin
         if (Info.Values[ConnProps_DateWriteFormat] = '') then begin
           ConSettings^.WriteFormatSettings.DateFormat := 'YYYYMMDD';  //ISO format which always is accepted by SQLServer
@@ -1049,70 +1188,17 @@ begin
   end;
 end;
 
-{**
-  Creates a <code>CallableStatement</code> object for calling
-  database stored procedures.
-  The <code>CallableStatement</code> object provides
-  methods for setting up its IN and OUT parameters, and
-  methods for executing the call to a stored procedure.
-
-  <P><B>Note:</B> This method is optimized for handling stored
-  procedure call statements. Some drivers may send the call
-  statement to the database when the method <code>prepareCall</code>
-  is done; others
-  may wait until the <code>CallableStatement</code> object
-  is executed. This has no
-  direct effect on users; however, it does affect which method
-  throws certain SQLExceptions.
-
-  Result sets created using the returned CallableStatement will have
-  forward-only type and read-only concurrency, by default.
-
-  @param Name a procedure or function identifier
-    parameter placeholders. Typically this  statement is a JDBC
-    function call escape string.
-  @param Info a statement parameters.
-  @return a new CallableStatement object containing the
-    pre-compiled SQL statement
-}
 {$IFDEF FPC} {$PUSH} {$WARN 5033 off : Function result does not seem to be set} {$ENDIF}
 function TZOleDBConnection.PrepareCallWithParams(const Name: String;
-  Info: TStrings): IZCallableStatement;
+  Params: TStrings): IZCallableStatement;
 begin
-  if (GetServerProvider = spMSSQL)
-  then Result := TZOleDBCallableStatementMSSQL.Create(Self, Name, Info)
+  if Closed then Open;
+  if (FServerProvider = spMSSQL)
+  then Result := TZOleDBCallableStatementMSSQL.Create(Self, Name, Params)
   else Raise EZUnsupportedException.Create(SUnsupportedOperation);
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
-{**
-  Creates a <code>PreparedStatement</code> object for sending
-  parameterized SQL statements to the database.
-
-  A SQL statement with or without IN parameters can be
-  pre-compiled and stored in a PreparedStatement object. This
-  object can then be used to efficiently execute this statement
-  multiple times.
-
-  <P><B>Note:</B> This method is optimized for handling
-  parametric SQL statements that benefit from precompilation. If
-  the driver supports precompilation,
-  the method <code>prepareStatement</code> will send
-  the statement to the database for precompilation. Some drivers
-  may not support precompilation. In this case, the statement may
-  not be sent to the database until the <code>PreparedStatement</code> is
-  executed.  This has no direct effect on users; however, it does
-  affect which method throws certain SQLExceptions.
-
-  Result sets created using the returned PreparedStatement will have
-  forward-only type and read-only concurrency, by default.
-
-  @param sql a SQL statement that may contain one or more '?' IN
-    parameter placeholders
-  @param Info a statement parameters.
-  @return a new PreparedStatement object containing the
-    pre-compiled statement
-}
 function TZOleDBConnection.PrepareStatementWithParams(const SQL: string;
   Info: TStrings): IZPreparedStatement;
 begin
@@ -1121,15 +1207,6 @@ begin
 end;
 
 
-{**
-  Releases a Connection's database and JDBC resources
-  immediately instead of waiting for
-  them to be automatically released.
-
-  <P><B>Note:</B> A Connection is automatically closed when it is
-  garbage collected. Certain fatal errors also result in a closed
-  Connection.
-}
 procedure TZOleDBConnection.InternalClose;
 var Status: HResult;
 begin
